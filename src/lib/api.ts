@@ -1,6 +1,6 @@
 // src/lib/api.ts
 
-export const BASE_URL = 'http://localhost:5000/api';
+export const BASE_URL = 'https://cbt-backend-chi.vercel.app/api';
 
 interface FetchOptions extends RequestInit {
   // You can add custom options here if needed later
