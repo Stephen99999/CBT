@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Brain, BookOpen, BarChart3, Users, CheckCircle, ArrowRight, Sparkles } from 'lucide-react';
 import Layout from '@/components/layout/Layout';
-import { initializeSampleData } from '@/lib/storage';
+
 
 const features = [
   {
@@ -39,9 +39,7 @@ const benefits = [
 ];
 
 const Landing: React.FC = () => {
-  useEffect(() => {
-    initializeSampleData();
-  }, []);
+  
 
   return (
     <Layout>

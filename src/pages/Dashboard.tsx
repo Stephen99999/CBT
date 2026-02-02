@@ -5,43 +5,78 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { useAuth } from '@/contexts/AuthContext';
-import { getCourses, getUserQuizAttempts, getUserThoughtRecords } from '@/lib/storage';
-import { Course, QuizAttempt, ThoughtRecord } from '@/types';
-import { BookOpen, Brain, TrendingUp, Calendar, ArrowRight, Award } from 'lucide-react';
+// 👇 IMPORT THE NEW FUNCTION HERE
+import { getEnrolledCourses, getMyQuizAttempts } from '@/lib/storage'; 
+import { Course, QuizAttempt } from '@/types';
+import { BookOpen, TrendingUp, Calendar, ArrowRight, Award, Loader2 } from 'lucide-react';
 
 const Dashboard: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [enrolledCourses, setEnrolledCourses] = useState<Course[]>([]);
   const [recentAttempts, setRecentAttempts] = useState<QuizAttempt[]>([]);
-  const [thoughtRecords, setThoughtRecords] = useState<ThoughtRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Fallback image since your API logs show 'imageUrl' is missing from the DB response
+  const DEFAULT_IMAGE = "https://placehold.co/600x400?text=Course+Image";
 
   useEffect(() => {
     if (!user) {
-      navigate('/auth');
-      return;
+        navigate('/auth');
+        return;
     }
 
-    const allCourses = getCourses();
-    const enrolled = allCourses.filter((c) => user.enrolledCourses.includes(c.id));
-    setEnrolledCourses(enrolled);
+    const fetchData = async () => {
+        setLoading(true);
+        try {
+            // 👇 1. FETCH DATA IN PARALLEL
+            const [myCoursesData, attemptsData] = await Promise.all([
+                getEnrolledCourses(),  // Calls your new working backend endpoint
+                getMyQuizAttempts()
+            ]);
 
-    const attempts = getUserQuizAttempts(user.id);
-    setRecentAttempts(attempts.slice(-5).reverse());
+            console.log("✅ My Courses from Backend:", myCoursesData);
 
-    const records = getUserThoughtRecords(user.id);
-    setThoughtRecords(records.slice(-3).reverse());
+            setEnrolledCourses(myCoursesData);
+            setRecentAttempts(attemptsData.slice(-5).reverse());
+            
+        } catch (error) {
+            console.error("Failed to load dashboard data", error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    fetchData();
+
   }, [user, navigate]);
 
   if (!user) return null;
 
+  if (loading) {
+    return (
+        <Layout>
+            <div className="flex h-[50vh] items-center justify-center">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+        </Layout>
+    );
+  }
+
   const totalQuizzes = recentAttempts.length;
   const averageScore = totalQuizzes > 0
-    ? recentAttempts.reduce((sum, a) => sum + (a.score / a.totalQuestions) * 100, 0) / totalQuizzes
+    ? recentAttempts.reduce((sum, a) => {
+        const pct = (a.totalQuestions && a.totalQuestions > 0)
+          ? ((a.score ?? 0) / a.totalQuestions) * 100
+          : (a.score ?? 0);
+        return sum + pct;
+      }, 0) / totalQuizzes
     : 0;
 
-  const getCourseTitle = (courseId: string) => {
-    return enrolledCourses.find((c) => c.id === courseId)?.title || 'Unknown Course';
+  const getCourseTitle = (courseId: string | number) => {
+    // Robust check (String vs Number)
+    const found = enrolledCourses.find((c) => String(c.id) === String(courseId));
+    return found?.title || 'Unknown Course';
   };
 
   return (
@@ -55,7 +90,7 @@ const Dashboard: React.FC = () => {
         </div>
 
         {/* Stats Overview */}
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-2 gap-4 mb-8">
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center gap-4">
@@ -84,33 +119,7 @@ const Dashboard: React.FC = () => {
             </CardContent>
           </Card>
           
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-4">
-                <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center">
-                  <TrendingUp className="h-6 w-6 text-primary" />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Average Score</p>
-                  <p className="text-2xl font-bold">{averageScore.toFixed(0)}%</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
           
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-4">
-                <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center">
-                  <Brain className="h-6 w-6 text-primary" />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Thought Records</p>
-                  <p className="text-2xl font-bold">{thoughtRecords.length}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
         </div>
 
         <div className="grid lg:grid-cols-2 gap-8">
@@ -137,7 +146,7 @@ const Dashboard: React.FC = () => {
               ) : (
                 <div className="space-y-4">
                   {enrolledCourses.slice(0, 3).map((course) => {
-                    const courseAttempts = recentAttempts.filter((a) => a.courseId === course.id);
+                    const courseAttempts = recentAttempts.filter((a) => String(a.courseId ?? a.course_id) === String(course.id));
                     const progress = courseAttempts.length > 0 
                       ? Math.min(100, (courseAttempts.length / 3) * 100) 
                       : 0;
@@ -150,8 +159,9 @@ const Dashboard: React.FC = () => {
                       >
                         <div className="flex items-center gap-4">
                           <div className="h-16 w-16 rounded-lg overflow-hidden bg-muted flex-shrink-0">
+                            {/* Uses Default Image if API doesn't send one */}
                             <img
-                              src={course.imageUrl}
+                              src={course.imageUrl || DEFAULT_IMAGE}
                               alt={course.title}
                               className="object-cover w-full h-full"
                             />
@@ -195,17 +205,20 @@ const Dashboard: React.FC = () => {
                       className="flex items-center justify-between p-4 rounded-lg border"
                     >
                       <div>
-                        <p className="font-medium">{getCourseTitle(attempt.courseId)}</p>
+                        <p className="font-medium">{getCourseTitle(attempt.courseId ?? attempt.course_id)}</p>
                         <p className="text-sm text-muted-foreground">
-                          {new Date(attempt.completedAt).toLocaleDateString()}
+                          {new Date(attempt.completedAt ?? attempt.updatedAt).toLocaleDateString()}
                         </p>
                       </div>
                       <div className="text-right">
                         <p className="text-2xl font-bold">
-                          {((attempt.score / attempt.totalQuestions) * 100).toFixed(0)}%
+                          {(attempt.totalQuestions && attempt.totalQuestions > 0
+                            ? ((attempt.score ?? 0) / attempt.totalQuestions) * 100
+                            : (attempt.score ?? 0)
+                          ).toFixed(0)}%
                         </p>
                         <p className="text-sm text-muted-foreground">
-                          {attempt.score}/{attempt.totalQuestions}
+                          {attempt.score ?? '—'}/{attempt.totalQuestions ?? '—'}
                         </p>
                       </div>
                     </div>
@@ -215,29 +228,6 @@ const Dashboard: React.FC = () => {
             </CardContent>
           </Card>
         </div>
-
-        {/* CBT Tools Promo */}
-        <Card className="mt-8">
-          <CardContent className="py-8">
-            <div className="flex flex-col md:flex-row items-center gap-6">
-              <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center">
-                <Brain className="h-8 w-8 text-primary" />
-              </div>
-              <div className="flex-1 text-center md:text-left">
-                <h3 className="text-xl font-bold mb-2">Practice CBT Techniques</h3>
-                <p className="text-muted-foreground">
-                  Use thought records and cognitive restructuring tools to manage exam anxiety
-                </p>
-              </div>
-              <Button asChild>
-                <Link to="/cbt-tools">
-                  Open CBT Tools
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Link>
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
       </div>
     </Layout>
   );

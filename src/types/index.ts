@@ -1,9 +1,9 @@
 // User types
 export interface User {
   id: string;
-  email: string;
+  matric_no: string;
   name: string;
-  role: 'user' | 'admin';
+  role: 'student' | 'admin';
   createdAt: string;
   enrolledCourses: string[];
 }
@@ -13,33 +13,42 @@ export interface Course {
   id: string;
   title: string;
   description: string;
-  category: string;
-  duration: string;
-  difficulty: 'beginner' | 'intermediate' | 'advanced';
+  level: string;
+  time_allowed: string;
+  totalEnrollments?: number | string;
   imageUrl: string;
-  createdAt: string;
-  questionCount: number;
 }
 
 // Question types
 export interface Question {
   id: string;
-  courseId: string;
-  text: string;
+  course_id: string;
+  question_text: string;
   options: string[];
-  correctAnswer: number;
-  explanation: string;
+  correct_answer: number;
 }
 
 // Quiz types
 export interface QuizAttempt {
-  id: string;
-  userId: string;
-  courseId: string;
-  score: number;
-  totalQuestions: number;
-  completedAt: string;
-  answers: { questionId: string; selectedAnswer: number; isCorrect: boolean }[];
+  id: number;            
+  user_id: number;      
+  course_id: number;    
+  score: number | null;  
+  totalQuestions?: number;
+  createdAt: string;    
+  updatedAt: string;
+  /** Optional camelCase aliases when API normalizes keys */
+  courseId?: number;
+  completedAt?: string;
+  
+  // These nested objects exist in your JSON and are needed for the UI
+  User?: {
+    name: string;
+    matric_no: string;
+  };
+  Course?: {
+    title: string;
+  };
 }
 
 // Progress types

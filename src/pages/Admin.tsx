@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '@/components/layout/Layout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,15 +11,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useAuth } from '@/contexts/AuthContext';
-import { 
+// UPDATED IMPORTS: Use API Service
+import {
   getCourses, createCourse, updateCourse, deleteCourse,
-  getQuestions, getQuestionsByCourse, createQuestion, updateQuestion, deleteQuestion,
+  getQuestionsByCourse, createQuestion, updateQuestion, deleteQuestion,
   getUsers, deleteUser, getQuizAttempts
 } from '@/lib/storage';
 import { Course, Question, User, QuizAttempt } from '@/types';
-import { 
-  BookOpen, Users, BarChart3, Settings, PlusCircle, Pencil, Trash2, 
-  ChevronDown, ChevronUp, AlertCircle
+import {
+  BookOpen, Users, BarChart3, Settings, PlusCircle, Pencil, Trash2,
+  AlertCircle, Loader2
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -52,7 +53,8 @@ const Admin: React.FC = () => {
   const [quizAttempts, setQuizAttempts] = useState<QuizAttempt[]>([]);
   const [selectedCourse, setSelectedCourse] = useState<string | null>(null);
   const [courseQuestions, setCourseQuestions] = useState<Question[]>([]);
-  
+  const [loading, setLoading] = useState(true);
+
   // Dialog states
   const [courseDialogOpen, setCourseDialogOpen] = useState(false);
   const [questionDialogOpen, setQuestionDialogOpen] = useState(false);
@@ -60,23 +62,46 @@ const Admin: React.FC = () => {
   const [editingCourse, setEditingCourse] = useState<Course | null>(null);
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ type: 'course' | 'question' | 'user'; id: string } | null>(null);
-  
+
   // Form states
   const [courseForm, setCourseForm] = useState({
     title: '',
     description: '',
     category: '',
     duration: '',
-    difficulty: 'beginner' as 'beginner' | 'intermediate' | 'advanced',
     imageUrl: '',
   });
-  
+
   const [questionForm, setQuestionForm] = useState({
     text: '',
     options: ['', '', '', ''],
     correctAnswer: 0,
-    explanation: '',
   });
+
+  // Load Initial Data
+  const loadData = useCallback(async () => {
+    try {
+      // Fetch all core data in parallel
+      const [coursesData, usersData, attemptsData] = await Promise.all([
+        getCourses(),
+        getUsers(),
+        getQuizAttempts()
+      ]);
+
+      setCourses(coursesData);
+      setUsers(usersData);
+      setQuizAttempts(attemptsData);
+    } catch (error) {
+      console.error("Failed to load admin data", error);
+      toast({
+        title: "Error loading data",
+        description: "Could not fetch admin data. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [toast]);
 
   useEffect(() => {
     if (!user || user.role !== 'admin') {
@@ -84,19 +109,26 @@ const Admin: React.FC = () => {
       return;
     }
     loadData();
-  }, [user, navigate]);
+  }, [user, navigate, loadData]);
 
+  // Load Questions when a course is selected
   useEffect(() => {
-    if (selectedCourse) {
-      setCourseQuestions(getQuestionsByCourse(selectedCourse));
-    }
-  }, [selectedCourse]);
-
-  const loadData = () => {
-    setCourses(getCourses());
-    setUsers(getUsers());
-    setQuizAttempts(getQuizAttempts());
-  };
+    const fetchQuestions = async () => {
+      if (selectedCourse) {
+        try {
+          // Assuming getQuestions accepts a courseId or we filter the result
+          // If your API supports getQuestions(courseId), pass it here.
+          const questions = await getQuestionsByCourse(selectedCourse);
+          setCourseQuestions(questions);
+        } catch (error) {
+          toast({ title: "Failed to load questions", variant: "destructive" });
+        }
+      } else {
+        setCourseQuestions([]);
+      }
+    };
+    fetchQuestions();
+  }, [selectedCourse, toast]);
 
   // Course handlers
   const openCourseDialog = (course?: Course) => {
@@ -105,9 +137,8 @@ const Admin: React.FC = () => {
       setCourseForm({
         title: course.title,
         description: course.description,
-        category: course.category,
-        duration: course.duration,
-        difficulty: course.difficulty,
+        category: course.level,
+        duration: course.time_allowed,
         imageUrl: course.imageUrl,
       });
     } else {
@@ -117,23 +148,26 @@ const Admin: React.FC = () => {
         description: '',
         category: '',
         duration: '',
-        difficulty: 'beginner',
         imageUrl: '',
       });
     }
     setCourseDialogOpen(true);
   };
 
-  const handleSaveCourse = () => {
-    if (editingCourse) {
-      updateCourse(editingCourse.id, courseForm);
-      toast({ title: 'Course updated successfully' });
-    } else {
-      createCourse(courseForm);
-      toast({ title: 'Course created successfully' });
+  const handleSaveCourse = async () => {
+    try {
+      if (editingCourse) {
+        await updateCourse(editingCourse.id, courseForm);
+        toast({ title: 'Course updated successfully' });
+      } else {
+        await createCourse(courseForm);
+        toast({ title: 'Course created successfully' });
+      }
+      setCourseDialogOpen(false);
+      loadData(); // Refresh list
+    } catch (error) {
+      toast({ title: 'Operation failed', description: 'Could not save course.', variant: 'destructive' });
     }
-    setCourseDialogOpen(false);
-    loadData();
   };
 
   // Question handlers
@@ -141,10 +175,9 @@ const Admin: React.FC = () => {
     if (question) {
       setEditingQuestion(question);
       setQuestionForm({
-        text: question.text,
+        text: question.question_text,
         options: [...question.options],
-        correctAnswer: question.correctAnswer,
-        explanation: question.explanation,
+        correctAnswer: question.correct_answer,
       });
     } else {
       setEditingQuestion(null);
@@ -152,63 +185,87 @@ const Admin: React.FC = () => {
         text: '',
         options: ['', '', '', ''],
         correctAnswer: 0,
-        explanation: '',
       });
     }
     setQuestionDialogOpen(true);
   };
 
-  const handleSaveQuestion = () => {
+  const handleSaveQuestion = async () => {
     if (!selectedCourse) return;
-    
-    if (editingQuestion) {
-      updateQuestion(editingQuestion.id, questionForm);
-      toast({ title: 'Question updated successfully' });
-    } else {
-      createQuestion({ ...questionForm, courseId: selectedCourse });
-      toast({ title: 'Question created successfully' });
+
+    try {
+      const questionData = { ...questionForm, courseId: selectedCourse };
+
+      if (editingQuestion) {
+        await updateQuestion(editingQuestion.id, questionData);
+        toast({ title: 'Question updated successfully' });
+      } else {
+        await createQuestion(questionData);
+        toast({ title: 'Question created successfully' });
+      }
+      setQuestionDialogOpen(false);
+
+      // Refresh questions for this course
+      const updatedQuestions = await getQuestionsByCourse(selectedCourse);
+      setCourseQuestions(updatedQuestions);
+
+      // Refresh main data (to update question counts in course list)
+      loadData();
+    } catch (error) {
+      toast({ title: 'Operation failed', description: 'Could not save question.', variant: 'destructive' });
     }
-    setQuestionDialogOpen(false);
-    setCourseQuestions(getQuestionsByCourse(selectedCourse));
-    loadData();
   };
 
   // Delete handlers
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (!deleteTarget) return;
-    
-    switch (deleteTarget.type) {
-      case 'course':
-        deleteCourse(deleteTarget.id);
-        toast({ title: 'Course deleted successfully' });
-        if (selectedCourse === deleteTarget.id) setSelectedCourse(null);
-        break;
-      case 'question':
-        deleteQuestion(deleteTarget.id);
-        toast({ title: 'Question deleted successfully' });
-        if (selectedCourse) setCourseQuestions(getQuestionsByCourse(selectedCourse));
-        break;
-      case 'user':
-        deleteUser(deleteTarget.id);
-        toast({ title: 'User deleted successfully' });
-        break;
+
+    try {
+      switch (deleteTarget.type) {
+        case 'course':
+          await deleteCourse(deleteTarget.id);
+          toast({ title: 'Course deleted successfully' });
+          if (selectedCourse === deleteTarget.id) setSelectedCourse(null);
+          break;
+        case 'question':
+          await deleteQuestion(deleteTarget.id);
+          toast({ title: 'Question deleted successfully' });
+          // Refresh questions list manually if we deleted a question
+          if (selectedCourse) {
+            const updated = await getQuestionsByCourse(selectedCourse);
+            setCourseQuestions(updated);
+          }
+          break;
+        case 'user':
+          await deleteUser(deleteTarget.id);
+          toast({ title: 'User deleted successfully' });
+          break;
+      }
+
+      setDeleteDialogOpen(false);
+      setDeleteTarget(null);
+      loadData(); // Refresh global data
+    } catch (error) {
+      toast({ title: 'Delete failed', description: 'Could not delete item.', variant: 'destructive' });
     }
-    
-    setDeleteDialogOpen(false);
-    setDeleteTarget(null);
-    loadData();
   };
 
   // Analytics calculations
-  const totalEnrollments = users.reduce((sum, u) => sum + u.enrolledCourses.length, 0);
-  const averageScore = quizAttempts.length > 0
-    ? quizAttempts.reduce((sum, a) => sum + (a.score / a.totalQuestions) * 100, 0) / quizAttempts.length
-    : 0;
-  const courseCompletionRate = courses.length > 0
-    ? (courses.filter(c => quizAttempts.some(a => a.courseId === c.id)).length / courses.length) * 100
-    : 0;
+  const totalEnrollments = courses.reduce((sum, course) =>
+    sum + Number(course.totalEnrollments || 0), 0
+  );
 
   if (!user || user.role !== 'admin') return null;
+
+  if (loading) {
+    return (
+      <Layout>
+        <div className="flex justify-center items-center h-[calc(100vh-200px)]">
+          <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>
@@ -221,7 +278,7 @@ const Admin: React.FC = () => {
         </div>
 
         {/* Stats Overview */}
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center gap-4">
@@ -235,7 +292,7 @@ const Admin: React.FC = () => {
               </div>
             </CardContent>
           </Card>
-          
+
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center gap-4">
@@ -249,21 +306,9 @@ const Admin: React.FC = () => {
               </div>
             </CardContent>
           </Card>
-          
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-4">
-                <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center">
-                  <BarChart3 className="h-6 w-6 text-primary" />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Avg. Score</p>
-                  <p className="text-2xl font-bold">{averageScore.toFixed(0)}%</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          
+
+
+
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center gap-4">
@@ -315,11 +360,11 @@ const Admin: React.FC = () => {
                     {courses.map((course) => (
                       <TableRow key={course.id}>
                         <TableCell className="font-medium">{course.title}</TableCell>
-                        <TableCell>{course.category}</TableCell>
+                        <TableCell>{course.level}</TableCell>
                         <TableCell>
-                          <Badge variant="outline" className="capitalize">{course.difficulty}</Badge>
+                          <Badge variant="outline" className="capitalize">CBT</Badge>
                         </TableCell>
-                        <TableCell>{course.questionCount}</TableCell>
+                        <TableCell>20</TableCell>
                         <TableCell className="text-right">
                           <Button variant="ghost" size="icon" onClick={() => openCourseDialog(course)}>
                             <Pencil className="h-4 w-4" />
@@ -390,20 +435,19 @@ const Admin: React.FC = () => {
                         <div className="flex justify-between items-start">
                           <div className="flex-1">
                             <p className="font-medium">
-                              {index + 1}. {question.text}
+                              {index + 1}. {question.question_text}
                             </p>
                             <div className="mt-2 space-y-1">
                               {question.options.map((option, optIndex) => (
                                 <p
                                   key={optIndex}
-                                  className={`text-sm ${
-                                    optIndex === question.correctAnswer
+                                  className={`text-sm ${optIndex === question.correct_answer
                                       ? 'text-green-600 dark:text-green-400 font-medium'
                                       : 'text-muted-foreground'
-                                  }`}
+                                    }`}
                                 >
                                   {String.fromCharCode(65 + optIndex)}. {option}
-                                  {optIndex === question.correctAnswer && ' ✓'}
+                                  {optIndex === question.correct_answer && ' ✓'}
                                 </p>
                               ))}
                             </div>
@@ -455,13 +499,13 @@ const Admin: React.FC = () => {
                     {users.map((u) => (
                       <TableRow key={u.id}>
                         <TableCell className="font-medium">{u.name}</TableCell>
-                        <TableCell>{u.email}</TableCell>
+                        <TableCell>{u.matric_no}</TableCell>
                         <TableCell>
                           <Badge variant={u.role === 'admin' ? 'default' : 'secondary'}>
                             {u.role}
                           </Badge>
                         </TableCell>
-                        <TableCell>{u.enrolledCourses.length}</TableCell>
+                        <TableCell>{u.enrolledCourses?.length || 0}</TableCell>
                         <TableCell>{new Date(u.createdAt).toLocaleDateString()}</TableCell>
                         <TableCell className="text-right">
                           {u.id !== user.id && (
@@ -488,19 +532,24 @@ const Admin: React.FC = () => {
           {/* Analytics Tab */}
           <TabsContent value="analytics">
             <div className="grid md:grid-cols-2 gap-6">
+
+              {/* --- CARD 1: COURSE PERFORMANCE --- */}
               <Card>
                 <CardHeader>
                   <CardTitle>Course Performance</CardTitle>
-                  <CardDescription>Quiz attempts and scores by course</CardDescription>
+                  <CardDescription>Average scores by course</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
                     {courses.map((course) => {
-                      const courseAttempts = quizAttempts.filter((a) => a.courseId === course.id);
-                      const avgScore = courseAttempts.length > 0
-                        ? courseAttempts.reduce((sum, a) => sum + (a.score / a.totalQuestions) * 100, 0) / courseAttempts.length
-                        : 0;
-                      
+
+                      const courseAttempts = quizAttempts.filter((a) => String(a.course_id) === String(course.id));
+
+                      // FIX 2: Handle Score Calculation safely
+                      // We sum up the raw scores since we don't have 'totalQuestions' in the JSON yet
+                      const totalScoreSum = courseAttempts.reduce((sum, a) => sum + (a.score || 0), 0);
+                      const avgRawScore = courseAttempts.length > 0 ? totalScoreSum / courseAttempts.length : 0;
+
                       return (
                         <div key={course.id} className="flex items-center justify-between p-4 border rounded-lg">
                           <div>
@@ -510,8 +559,9 @@ const Admin: React.FC = () => {
                             </p>
                           </div>
                           <div className="text-right">
-                            <p className="text-2xl font-bold">{avgScore.toFixed(0)}%</p>
-                            <p className="text-sm text-muted-foreground">avg. score</p>
+                            {/* Displaying Raw Average Score since we lack total questions count */}
+                            <p className="text-2xl font-bold">{avgRawScore.toFixed(1)}</p>
+                            <p className="text-sm text-muted-foreground">avg. points</p>
                           </div>
                         </div>
                       );
@@ -520,6 +570,7 @@ const Admin: React.FC = () => {
                 </CardContent>
               </Card>
 
+              {/* --- CARD 2: RECENT ACTIVITY --- */}
               <Card>
                 <CardHeader>
                   <CardTitle>Recent Activity</CardTitle>
@@ -527,27 +578,34 @@ const Admin: React.FC = () => {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    {quizAttempts.slice(-5).reverse().map((attempt) => {
-                      const attemptUser = users.find((u) => u.id === attempt.userId);
-                      const course = courses.find((c) => c.id === attempt.courseId);
-                      
+                    {/* Slice and map your attempts */}
+                    {quizAttempts.slice(0, 5).map((attempt) => {
+
+                      // FIX 3: Use the nested User/Course objects directly from JSON
+                      // No need to .find() in other arrays!
+                      const userName = attempt.User?.name || 'Unknown User';
+                      const courseTitle = attempt.Course?.title || 'Unknown Course';
+                      const scoreDisplay = attempt.score !== null ? attempt.score : 'In Progress';
+
                       return (
                         <div key={attempt.id} className="flex items-center justify-between p-4 border rounded-lg">
                           <div>
-                            <p className="font-medium">{attemptUser?.name || 'Unknown User'}</p>
-                            <p className="text-sm text-muted-foreground">{course?.title || 'Unknown Course'}</p>
+                            <p className="font-medium">{userName}</p>
+                            <p className="text-sm text-muted-foreground">{courseTitle}</p>
                           </div>
                           <div className="text-right">
                             <p className="font-bold">
-                              {((attempt.score / attempt.totalQuestions) * 100).toFixed(0)}%
+                              {/* FIX 4: Just show the Score, because we don't know the Total Questions */}
+                              Score: {scoreDisplay}
                             </p>
                             <p className="text-sm text-muted-foreground">
-                              {new Date(attempt.completedAt).toLocaleDateString()}
+                              {new Date(attempt.createdAt).toLocaleDateString()}
                             </p>
                           </div>
                         </div>
                       );
                     })}
+
                     {quizAttempts.length === 0 && (
                       <p className="text-center text-muted-foreground py-4">No quiz attempts yet</p>
                     )}
@@ -605,24 +663,7 @@ const Admin: React.FC = () => {
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Difficulty</Label>
-                <Select
-                  value={courseForm.difficulty}
-                  onValueChange={(value: 'beginner' | 'intermediate' | 'advanced') =>
-                    setCourseForm((prev) => ({ ...prev, difficulty: value }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="beginner">Beginner</SelectItem>
-                    <SelectItem value="intermediate">Intermediate</SelectItem>
-                    <SelectItem value="advanced">Advanced</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+
               <div className="space-y-2">
                 <Label htmlFor="course-image">Image URL</Label>
                 <Input
@@ -693,15 +734,6 @@ const Admin: React.FC = () => {
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="question-explanation">Explanation</Label>
-              <Textarea
-                id="question-explanation"
-                placeholder="Explain why this is the correct answer..."
-                value={questionForm.explanation}
-                onChange={(e) => setQuestionForm((prev) => ({ ...prev, explanation: e.target.value }))}
-              />
             </div>
           </div>
           <DialogFooter>

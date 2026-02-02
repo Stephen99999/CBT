@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import Layout from '@/components/layout/Layout';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -9,12 +9,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Course } from '@/types';
 import { getCourses, enrollInCourse } from '@/lib/storage';
 import { useAuth } from '@/contexts/AuthContext';
-import { BookOpen, Clock, BarChart, Search, CheckCircle } from 'lucide-react';
+import { BookOpen, Clock, BarChart, Search, CheckCircle, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 const Courses: React.FC = () => {
+  const navigate = useNavigate();
+  // State for data
   const [courses, setCourses] = useState<Course[]>([]);
   const [filteredCourses, setFilteredCourses] = useState<Course[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // State for filters
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [difficultyFilter, setDifficultyFilter] = useState('all');
@@ -22,12 +27,30 @@ const Courses: React.FC = () => {
   const { user, updateCurrentUser } = useAuth();
   const { toast } = useToast();
 
+  // 1. Fetch Courses (Async)
   useEffect(() => {
-    const allCourses = getCourses();
-    setCourses(allCourses);
-    setFilteredCourses(allCourses);
-  }, []);
+    const fetchCourses = async () => {
+      setLoading(true);
+      try {
+        const data = await getCourses();
+        setCourses(data);
+        setFilteredCourses(data);
+      } catch (error) {
+        console.error("Failed to fetch courses:", error);
+        toast({
+          title: "Error",
+          description: "Could not load courses. Please try again later.",
+          variant: "destructive"
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
 
+    fetchCourses();
+  }, [toast]);
+
+  // 2. Filter Logic
   useEffect(() => {
     let filtered = courses;
     
@@ -40,55 +63,60 @@ const Courses: React.FC = () => {
     }
     
     if (categoryFilter !== 'all') {
-      filtered = filtered.filter((c) => c.category === categoryFilter);
-    }
-    
-    if (difficultyFilter !== 'all') {
-      filtered = filtered.filter((c) => c.difficulty === difficultyFilter);
+      filtered = filtered.filter((c) => c.level === categoryFilter);
     }
     
     setFilteredCourses(filtered);
   }, [searchQuery, categoryFilter, difficultyFilter, courses]);
 
-  const categories = [...new Set(courses.map((c) => c.category))];
+  const categories = [...new Set(courses.map((c) => c.level ))];
 
-  const handleEnroll = (courseId: string) => {
+  // 3. Handle Enroll (Async)
+  const handleEnroll = async (courseId: string) => {
+    // --- DEBUG LOG 1: CHECK BUTTON CLICK ---
+    console.log("Enroll Button Clicked. Course ID received:", courseId);
+
     if (!user) {
       toast({
         title: 'Please log in',
         description: 'You need to be logged in to enroll in courses.',
         variant: 'destructive',
       });
+      navigate('/auth'); 
       return;
     }
     
-    const success = enrollInCourse(user.id, courseId);
-    if (success) {
-      const updatedUser = { ...user, enrolledCourses: [...user.enrolledCourses, courseId] };
-      updateCurrentUser(updatedUser);
-      toast({
-        title: 'Enrolled successfully!',
-        description: 'You can now access this course from your dashboard.',
-      });
+    try {
+        const success = await enrollInCourse(courseId);
+        
+        if (success) {
+            const currentEnrollments = user.enrolledCourses || [];
+            
+            const updatedUser = { 
+                ...user, 
+                enrolledCourses: [...currentEnrollments, courseId] 
+            };
+            
+            updateCurrentUser(updatedUser);
+            
+            toast({
+                title: 'Enrolled successfully!',
+                description: 'You can now access this course from your dashboard.',
+            });
+        }
+    } catch (error) {
+        toast({
+            title: 'Enrollment Failed',
+            description: 'Something went wrong. Please try again.',
+            variant: "destructive"
+        });
     }
   };
 
   const isEnrolled = (courseId: string) => {
-    return user?.enrolledCourses.includes(courseId) || false;
+    return user?.enrolledCourses?.includes(courseId) || false;
   };
-
-  const getDifficultyColor = (difficulty: string) => {
-    switch (difficulty) {
-      case 'beginner':
-        return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100';
-      case 'intermediate':
-        return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-100';
-      case 'advanced':
-        return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-100';
-      default:
-        return '';
-    }
-  };
+  
 
   return (
     <Layout>
@@ -137,75 +165,86 @@ const Courses: React.FC = () => {
           </Select>
         </div>
 
-        {/* Course Grid */}
-        {filteredCourses.length === 0 ? (
-          <div className="text-center py-12">
-            <BookOpen className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <h3 className="text-lg font-medium mb-2">No courses found</h3>
-            <p className="text-muted-foreground">Try adjusting your search or filters</p>
-          </div>
+        {/* Loading State */}
+        {loading ? (
+            <div className="flex justify-center items-center py-20">
+                <Loader2 className="h-10 w-10 animate-spin text-primary" />
+            </div>
         ) : (
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredCourses.map((course) => (
-              <Card key={course.id} className="flex flex-col overflow-hidden hover:shadow-lg transition-shadow">
-                <div className="aspect-video bg-muted relative overflow-hidden">
-                  <img
-                    src={course.imageUrl}
-                    alt={course.title}
-                    className="object-cover w-full h-full"
-                  />
-                  {isEnrolled(course.id) && (
-                    <div className="absolute top-2 right-2">
-                      <Badge className="bg-primary">
-                        <CheckCircle className="h-3 w-3 mr-1" />
-                        Enrolled
-                      </Badge>
-                    </div>
-                  )}
+            /* Course Grid */
+            <>
+                {filteredCourses.length === 0 ? (
+                <div className="text-center py-12">
+                    <BookOpen className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                    <h3 className="text-lg font-medium mb-2">No courses found</h3>
+                    <p className="text-muted-foreground">Try adjusting your search or filters</p>
                 </div>
-                <CardHeader>
-                  <div className="flex items-center gap-2 mb-2">
-                    <Badge variant="outline">{course.category}</Badge>
-                    <Badge className={getDifficultyColor(course.difficulty)}>
-                      {course.difficulty}
-                    </Badge>
-                  </div>
-                  <CardTitle className="line-clamp-2">{course.title}</CardTitle>
-                  <CardDescription className="line-clamp-2">
-                    {course.description}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="flex-1">
-                  <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                    <span className="flex items-center gap-1">
-                      <Clock className="h-4 w-4" />
-                      {course.duration}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <BarChart className="h-4 w-4" />
-                      {course.questionCount} questions
-                    </span>
-                  </div>
-                </CardContent>
-                <CardFooter className="gap-2">
-                  {isEnrolled(course.id) ? (
-                    <Button asChild className="w-full">
-                      <Link to={`/course/${course.id}`}>Continue Learning</Link>
-                    </Button>
-                  ) : (
-                    <>
-                      <Button variant="outline" asChild className="flex-1">
-                        <Link to={`/course/${course.id}`}>View Details</Link>
-                      </Button>
-                      <Button onClick={() => handleEnroll(course.id)} className="flex-1">
-                        Enroll Now
-                      </Button>
-                    </>
-                  )}
-                </CardFooter>
-              </Card>
-            ))}
-          </div>
+                ) : (
+                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {filteredCourses.map((course) => {
+                      // --- DEBUG LOG 2: CHECK DATA ---
+                      console.log(`Rendering Course: "${course.title}" | ID:`, course.id);
+
+                      return (
+                        <Card key={course.id} className="flex flex-col overflow-hidden hover:shadow-lg transition-shadow">
+                            <div className="aspect-video bg-muted relative overflow-hidden">
+                            <img
+                                src={course.imageUrl}
+                                alt={course.title}
+                                className="object-cover w-full h-full"
+                            />
+                            {isEnrolled(course.id) && (
+                                <div className="absolute top-2 right-2">
+                                <Badge className="bg-primary">
+                                    <CheckCircle className="h-3 w-3 mr-1" />
+                                    Enrolled
+                                </Badge>
+                                </div>
+                            )}
+                            </div>
+                            <CardHeader>
+                            <div className="flex items-center gap-2 mb-2">
+                                <Badge variant="outline">{course.level}</Badge>
+                            </div>
+                            <CardTitle className="line-clamp-2">{course.title}</CardTitle>
+                            <CardDescription className="line-clamp-2">
+                                {course.description}
+                            </CardDescription>
+                            </CardHeader>
+                            <CardContent className="flex-1">
+                            <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                                <span className="flex items-center gap-1">
+                                <Clock className="h-4 w-4" />
+                                {course.time_allowed}
+                                </span>
+                                <span className="flex items-center gap-1">
+                                <BarChart className="h-4 w-4" />
+                                 questions
+                                </span>
+                            </div>
+                            </CardContent>
+                            <CardFooter className="gap-2">
+                            {isEnrolled(course.id) ? (
+                                <Button asChild className="w-full">
+                                <Link to={`/course/${course.id}`}>Continue Learning</Link>
+                                </Button>
+                            ) : (
+                                <>
+                                <Button variant="outline" asChild className="flex-1">
+                                    <Link to={`/course/${course.id}`}>View Details</Link>
+                                </Button>
+                                <Button onClick={() => handleEnroll(course.id)} className="flex-1">
+                                    Enroll Now
+                                </Button>
+                                </>
+                            )}
+                            </CardFooter>
+                        </Card>
+                      );
+                    })}
+                </div>
+                )}
+            </>
         )}
       </div>
     </Layout>

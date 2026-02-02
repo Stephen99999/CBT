@@ -10,7 +10,7 @@ import { z } from 'zod';
 import { useToast } from '@/hooks/use-toast';
 
 const loginSchema = z.object({
-  email: z.string().trim().email('Invalid email address'),
+  matric_no: z.string().min(6,'Invalid Matric number address'),
   password: z.string().min(6, 'Password must be at least 6 characters'),
 });
 
@@ -27,7 +27,7 @@ const Auth: React.FC = () => {
   const [isLogin, setIsLogin] = useState(searchParams.get('mode') !== 'register');
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
-    email: '',
+    matric_no: '',
     password: '',
     confirmPassword: '',
     name: '',
@@ -48,38 +48,51 @@ const Auth: React.FC = () => {
     e.preventDefault();
     setErrors({});
     setIsLoading(true);
-
+  
     try {
+      let result;
+      
       if (isLogin) {
         const validated = loginSchema.parse(formData);
-        const result = login(validated.email, validated.password);
-        
-        if (result.success) {
-          toast({ title: 'Welcome back!', description: 'You have successfully logged in.' });
-          navigate('/dashboard');
-        } else {
-          setErrors({ form: result.error || 'Login failed' });
-        }
+        // Now we await the Context function
+        result = await login(validated.matric_no, validated.password);
       } else {
         const validated = registerSchema.parse(formData);
-        const result = register(validated.email, validated.password, validated.name);
-        
-        if (result.success) {
-          toast({ title: 'Account created!', description: 'Welcome to CBT Prep.' });
-          navigate('/dashboard');
-        } else {
-          setErrors({ form: result.error || 'Registration failed' });
-        }
+        // Now we await the Context function
+        result = await register(validated.matric_no, validated.password, validated.name);
       }
+  
+      if (result.success) {
+        toast({ 
+          title: isLogin ? 'Welcome back!' : 'Account created!', 
+          description: 'Success.' 
+        });
+        navigate('/dashboard');
+      } else {
+        setErrors({ form: result.error || 'Operation failed' });
+      }
+  
     } catch (error) {
+      // --- START OF ZOD ERROR HANDLING ---
       if (error instanceof z.ZodError) {
         const fieldErrors: Record<string, string> = {};
+        
+        // Loop through each error found by Zod
         error.errors.forEach((err) => {
+          // err.path[0] is the field name (e.g., "password", "matric_no")
           if (err.path[0]) {
             fieldErrors[err.path[0] as string] = err.message;
           }
         });
+        
+        // Update the state so red error messages appear under inputs
         setErrors(fieldErrors);
+      } 
+      // --- END OF ZOD ERROR HANDLING ---
+      
+      else {
+        // Fallback for non-Zod errors (like API failure)
+        setErrors({ form: 'Something went wrong. Please try again.' });
       }
     } finally {
       setIsLoading(false);
@@ -135,16 +148,16 @@ const Auth: React.FC = () => {
             )}
             
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="matric_no">Matric Number</Label>
               <Input
-                id="email"
-                type="email"
-                placeholder="you@example.com"
-                value={formData.email}
-                onChange={(e) => handleInputChange('email', e.target.value)}
-                className={errors.email ? 'border-destructive' : ''}
+                id="matric_no"
+                type="text"
+                placeholder="12369854"
+                value={formData.matric_no}
+                onChange={(e) => handleInputChange('matric_no', e.target.value)}
+                className={errors.matric_no ? 'border-destructive' : ''}
               />
-              {errors.email && <p className="text-sm text-destructive">{errors.email}</p>}
+              {errors.matric_no && <p className="text-sm text-destructive">{errors.matric_no}</p>}
             </div>
             
             <div className="space-y-2">

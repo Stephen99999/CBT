@@ -9,8 +9,6 @@ import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import Courses from "./pages/Courses";
 import CourseDetail from "./pages/CourseDetail";
-import CBTTools from "./pages/CBTTools";
-import Forum from "./pages/Forum";
 import Admin from "./pages/Admin";
 import NotFound from "./pages/NotFound";
 
@@ -29,8 +27,6 @@ const App = () => (
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/courses" element={<Courses />} />
             <Route path="/course/:id" element={<CourseDetail />} />
-            <Route path="/cbt-tools" element={<CBTTools />} />
-            <Route path="/forum" element={<Forum />} />
             <Route path="/admin" element={<Admin />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />

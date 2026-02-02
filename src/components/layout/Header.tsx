@@ -23,8 +23,6 @@ const Header: React.FC = () => {
 
   const navItems = [
     { href: '/courses', label: 'Courses', icon: BookOpen },
-    { href: '/forum', label: 'Community', icon: MessageSquare },
-    { href: '/cbt-tools', label: 'CBT Tools', icon: Brain },
   ];
 
   return (
