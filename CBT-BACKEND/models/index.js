@@ -6,14 +6,27 @@ const Sequelize = require('sequelize');
 const process = require('process');
 const basename = path.basename(__filename);
 const env = process.env.NODE_ENV || 'development';
+// 1. IMPORT PG MANUALLY
+const pg = require('pg'); 
+
 const config = require(__dirname + '/../config/config.js')[env];
 const db = {};
 
 let sequelize;
+
+// 2. FORCE SEQUELIZE TO USE PG
 if (config.use_env_variable) {
-  sequelize = new Sequelize(process.env[config.use_env_variable], config);
+  sequelize = new Sequelize(process.env[config.use_env_variable], {
+    ...config,
+    dialect: 'postgres',
+    dialectModule: pg // <--- THIS LINE IS CRITICAL
+  });
 } else {
-  sequelize = new Sequelize(config.database, config.username, config.password, config);
+  sequelize = new Sequelize(config.database, config.username, config.password, {
+    ...config,
+    dialect: 'postgres',
+    dialectModule: pg // <--- THIS LINE IS CRITICAL
+  });
 }
 
 fs
