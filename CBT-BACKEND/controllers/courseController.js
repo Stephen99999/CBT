@@ -12,9 +12,9 @@ exports.index = async (req, res) => {
                         // This writes a raw SQL subquery to count enrollments
                         sequelize.literal(`(
                             SELECT COUNT(*)
-                            FROM Enrollments AS enrollment
+                            FROM "Enrollments" AS enrollment
                             WHERE
-                                enrollment.course_id = Course.id
+                                enrollment.course_id = "Course"."id"
                         )`),
                         'totalEnrollments'
                     ]
