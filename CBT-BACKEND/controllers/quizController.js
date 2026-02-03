@@ -146,7 +146,7 @@ exports.endQuiz = async (req, res) => {
         
         // Add a "Grace Period" (e.g., 60 seconds) for network latency/slow internet
         // If you don't add this, users with slow internet might get rejected unfairly.
-        const gracePeriodMs = 60 * 1000; 
+        const gracePeriodMs = 30 * 1000; 
 
         const allowedEndTime = startTime + durationMs + gracePeriodMs;
 
