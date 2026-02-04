@@ -151,10 +151,12 @@ export const startQuizAttempt = async (courseId: string | number) => {
 
 // 2. Finish: Matches PUT /attempts/complete
 // Expects: { attempt_id, score }
-export const submitQuizResult = async (attempt_id: number, score: number) => {
+export const submitQuizResult = async (attempt_id: number, score: number, cheatedScore: number | null) => {
   return apiRequest<{ msg: string; score: number }>('/attempts/complete', {
     method: 'PUT', // changed from POST
-    body: JSON.stringify({ attempt_id, score }),
+    body: JSON.stringify({ attempt_id, 
+      score,
+      cheatedScore }),
   });
 };
 

@@ -94,21 +94,17 @@ const CourseDetail: React.FC = () => {
     fetchCourseData();
   }, [id, user, toast]);
 
-  // 2. Anti-Cheat & Timer Logic
+  
   useEffect(() => {
     if (!isQuizMode || !currentAttemptId || !course) return;
 
-    // A. Disable Context Menu (Right Click)
     const handleContextMenu = (e: MouseEvent) => e.preventDefault();
     document.addEventListener("contextmenu", handleContextMenu);
 
-    // B. Calculate Deadline
-    // Note: In a production app, fetch the exact server-side 'createdAt' for better precision
     const durationInMinutes = Number(course.time_allowed) || 10;
     const now = new Date().getTime();
     const deadline = now + (durationInMinutes * 60 * 1000); 
 
-    // C. Timer Interval
     const timerInterval = setInterval(() => {
       const currentTime = new Date().getTime();
       const secondsLeft = Math.floor((deadline - currentTime) / 1000);
@@ -116,16 +112,18 @@ const CourseDetail: React.FC = () => {
       if (secondsLeft <= 0) {
         clearInterval(timerInterval);
         setTimeLeft(0);
-        handleAutoSubmit("Time is up!");
+        // Time up is usually NOT cheating, just a forced submit
+        handleAutoSubmit("Time is up!", false); 
       } else {
         setTimeLeft(secondsLeft);
       }
     }, 1000);
 
-    // D. Tab Switch Detection
+    // Tab Switch Detection
     const handleVisibilityChange = () => {
       if (document.hidden) {
-        handleAutoSubmit("Cheating detected: You switched tabs.");
+        // Tab switch IS cheating -> Pass true
+        handleAutoSubmit("Cheating detected: You switched tabs. Score set to 0.", true);
       }
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);
@@ -137,16 +135,17 @@ const CourseDetail: React.FC = () => {
     };
   }, [isQuizMode, currentAttemptId, course]);
 
-  // Helper Wrapper for Auto-Submission
-  const handleAutoSubmit = (reason: string) => {
+  const handleAutoSubmit = (reason: string, isCheating: boolean = false) => {
     if (isSubmittingRef.current) return; // Prevent double calls
     
     toast({
-        title: "Quiz Ended",
+        title: isCheating ? "Cheating Detected" : "Quiz Ended",
         description: reason,
         variant: "destructive"
     });
-    finishQuiz();
+    
+    // Pass the flag to finishQuiz
+    finishQuiz(isCheating);
   };
 
   const bestScore = attempts.length > 0 
@@ -260,7 +259,7 @@ const CourseDetail: React.FC = () => {
     }
   };
 
-  const finishQuiz = async () => {
+  const finishQuiz = async (isCheating = false) => {
     // 1. Validation Checks
     if (isSubmittingRef.current) return;
     if (!user || !id || !currentAttemptId) return;
@@ -269,7 +268,7 @@ const CourseDetail: React.FC = () => {
     isSubmittingRef.current = true;
     setSubmitting(true);
     
-    // 3. Calculate Score Locally
+    // 3. Calculate Actual Score Locally
     const answers = questions.map((q) => {
         const userAns = selectedAnswers[q.id];
         const isCorrect = Number(userAns) === Number(q.correct_answer);
@@ -280,28 +279,32 @@ const CourseDetail: React.FC = () => {
         };
     });
     
-    const score = answers.filter((a) => a.isCorrect).length;
+    const calculatedScore = answers.filter((a) => a.isCorrect).length;
+
+    // 4. Determine Scores to Send
+    // If cheating, Score is 0, but we pass calculatedScore as a separate argument
+    const finalScore = isCheating ? 0 : calculatedScore;
+    const cheatedScore = isCheating ? calculatedScore : null;
     
     try {
-        await submitQuizResult(currentAttemptId, score);
+        // UPDATE: You must update your API function to accept the 3rd argument
+        await submitQuizResult(currentAttemptId, finalScore, cheatedScore);
 
         const updatedAttempts = await getMyQuizAttempts();
         setAttempts(updatedAttempts.filter((a) => String(a.courseId) === String(id)));
         
-        // Short delay for UX
         setTimeout(() => {
             setShowResults(true);
         }, 500);
 
     } catch (error: any) {
         console.error(error);
-        // Even if backend fails (e.g. timeout), show the result locally so user isn't stuck
         if(error.response?.status === 200) {
              setShowResults(true);
         } else {
              toast({
                 title: "Submission Status",
-                description: error.response?.data?.msg || "Quiz submitted, but there was an issue saving.",
+                description: error.response?.data?.msg || "Quiz submitted.",
                 variant: "default" 
             });
             setShowResults(true);
