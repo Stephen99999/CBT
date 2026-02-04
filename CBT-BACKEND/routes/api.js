@@ -8,8 +8,8 @@ const authMiddleware = require('../middleware/auth');
 const authController = require('../controllers/authController');
 const courseController = require('../controllers/courseController');
 const questionController = require('../controllers/questionController');
-const quizController = require('../controllers/quizcontroller'); // Import the new controller
-const userController = require('../controllers/userController'); // Uncomment if you have this
+const quizController = require('../controllers/quizController'); 
+const userController = require('../controllers/userController'); 
 
 // ==========================================
 // AUTH ROUTES

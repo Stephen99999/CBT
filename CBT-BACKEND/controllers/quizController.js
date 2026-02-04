@@ -1,5 +1,4 @@
-// controllers/quizController.js
-const { where } = require('sequelize');
+
 const { quizAttempts, Course, User,Enrollment } = require('../models'); 
 
 
