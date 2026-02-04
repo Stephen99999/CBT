@@ -34,6 +34,8 @@ module.exports = (sequelize, DataTypes) => {
     title:DataTypes.STRING,
     level: DataTypes.INTEGER,
     description: DataTypes.STRING,
+    is_available: DataTypes.BOOLEAN,
+    show_result: DataTypes.BOOLEAN,
     time_allowed: DataTypes.INTEGER,
   }, {
     sequelize,

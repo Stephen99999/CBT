@@ -72,6 +72,16 @@ export const enrollInCourse = async (courseId: string): Promise<boolean> => {
   }
 };
 
+// Add this to your imports/exports
+export const toggleCourseAvailability = async (id: string) => {
+  const response = await apiRequest(`/courses/${id}/toggle-availability`, { method: 'PUT' });
+  return response;
+};
+
+export const toggleShowResult = async (id: string) => {
+  const response = await apiRequest(`/courses/${id}/toggle-show-result`, { method: 'PUT' });
+  return response;
+};
 
 // ==========================================
 // QUESTION FUNCTIONS

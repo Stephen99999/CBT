@@ -5,7 +5,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { useAuth } from '@/contexts/AuthContext';
-// 👇 IMPORT THE NEW FUNCTION HERE
 import { getEnrolledCourses, getMyQuizAttempts } from '@/lib/storage'; 
 import { Course, QuizAttempt } from '@/types';
 import { BookOpen, TrendingUp, Calendar, ArrowRight, Award, Loader2 } from 'lucide-react';
@@ -35,7 +34,7 @@ const Dashboard: React.FC = () => {
                 getMyQuizAttempts()
             ]);
 
-            console.log("✅ My Courses from Backend:", myCoursesData);
+            console.log("✅ My Courses from Backend:", attemptsData);
 
             setEnrolledCourses(myCoursesData);
             setRecentAttempts(attemptsData.slice(-5).reverse());

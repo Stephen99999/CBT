@@ -23,6 +23,7 @@ module.exports = (sequelize, DataTypes) => {
     user_id: DataTypes.INTEGER,
     course_id: DataTypes.INTEGER,
     score: DataTypes.INTEGER,
+    cheated_score: DataTypes.INTEGER,
     updatedAt: DataTypes.DATE,
   }, {
     sequelize,

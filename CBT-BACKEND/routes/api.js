@@ -8,7 +8,7 @@ const authMiddleware = require('../middleware/auth');
 const authController = require('../controllers/authController');
 const courseController = require('../controllers/courseController');
 const questionController = require('../controllers/questionController');
-const quizController = require('../controllers/quizController'); // Import the new controller
+const quizController = require('../controllers/quizcontroller'); // Import the new controller
 const userController = require('../controllers/userController'); // Uncomment if you have this
 
 // ==========================================
@@ -30,7 +30,8 @@ router.post('/courses', authMiddleware, courseController.store);
 router.get('/myCourses', authMiddleware, courseController.myCourses);
 router.put('/courses/:id', authMiddleware, courseController.update);
 router.delete('/courses/:id', authMiddleware, courseController.destroy);
-
+router.put('/courses/:id/toggle-availability', authMiddleware, courseController.toggleAvailability);
+router.put('/courses/:id/toggle-show-result', authMiddleware, courseController.toggleShowResult);
 // Protected: Enrollment
 // Specific endpoint for enrolling to avoid conflict with update
 router.post('/courses/:id/enroll', authMiddleware, courseController.enroll); 

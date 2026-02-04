@@ -1,12 +1,22 @@
+const { where } = require('sequelize');
 const { Course, Enrollment, User } = require('../models');
 const { sequelize } = require('../models');
 
 // GET /api/courses
 exports.index = async (req, res) => {
     try {
+       
+        let whereCondition = { is_available: true };
+
+       
+        if (req.user && req.user.role === 'admin') {
+            whereCondition = {}; // Remove restrictions, show hidden courses too
+        }
+
         const courses = await Course.findAll({
+            where: whereCondition, 
             attributes: {
-                // Keep all existing Course columns
+                
                 include: [
                     [
                         // This writes a raw SQL subquery to count enrollments
@@ -20,7 +30,8 @@ exports.index = async (req, res) => {
                     ]
                 ]
             },
-            
+           
+             order: [['createdAt', 'DESC']] 
         });
         res.json(courses);
     } catch (err) {
@@ -49,7 +60,8 @@ exports.myCourses = async (req, res) => {
         // 👇 FIX IS HERE: Add "raw: true" and "nest: true"
         const courses = await Course.findAll({
             where: {
-                id: courseIds
+                id: courseIds,
+                is_available: true
             },
             raw: true, // Returns plain JSON data, not Sequelize instances
             nest: true 
@@ -180,5 +192,77 @@ exports.enroll = async (req, res) => {
     } catch (err) {
         console.error(err.message);
         res.status(500).send('Server Error');
+    }
+};
+
+exports.toggleAvailability = async (req, res) => {
+    try {
+        const { id } = req.params; // Get course ID from URL
+
+        if (req.user.role !== 'admin') {
+            return res.status(403).json({ error: 'Access denied: Admins only' });
+        }
+
+        // 1. Find the course
+        const course = await Course.findByPk(id);
+
+        if (!course) {
+            return res.status(404).json({ msg: 'Course not found' });
+        }
+
+        // 2. Toggle the boolean
+        course.is_available = !course.is_available;
+        
+        // 3. Save changes
+        await course.save();
+
+        res.status(200).json({ 
+            msg: `Course is now ${course.is_available ? 'Available' : 'Hidden'}`, 
+            course: {
+                id: course.id,
+                title: course.title,
+                is_available: course.is_available
+            }
+        });
+
+    } catch (err) {
+        console.error("❌ Error toggling availability:", err);
+        res.status(500).json({ error: err.message });
+    }
+};
+
+exports.toggleShowResult = async (req, res) => {
+    try {
+        const { id } = req.params; // Get course ID from URL
+
+        if (req.user.role !== 'admin') {
+            return res.status(403).json({ error: 'Access denied: Admins only' });
+        }
+
+        // 1. Find the course
+        const course = await Course.findByPk(id);
+
+        if (!course) {
+            return res.status(404).json({ msg: 'Course not found' });
+        }
+
+        // 2. Toggle the boolean
+        course.show_result = !course.show_result;
+        
+        // 3. Save changes
+        await course.save();
+
+        res.status(200).json({ 
+            msg: `Course is now ${course.show_result ? 'Show Result' : 'Hide Result'}`, 
+            course: {
+                id: course.id,
+                title: course.title,
+                show_result: course.show_result
+            }
+        });
+
+    } catch (err) {
+        console.error("❌ Error toggling show result:", err);
+        res.status(500).json({ error: err.message });
     }
 };

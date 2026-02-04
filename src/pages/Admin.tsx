@@ -11,11 +11,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useAuth } from '@/contexts/AuthContext';
-// UPDATED IMPORTS: Use API Service
+import { Switch } from '@/components/ui/switch'; 
 import {
   getCourses, createCourse, updateCourse, deleteCourse,
   getQuestionsByCourse, createQuestion, updateQuestion, deleteQuestion,
-  getUsers, deleteUser, getQuizAttempts
+  getUsers, deleteUser, getQuizAttempts,
+  toggleCourseAvailability, toggleShowResult 
 } from '@/lib/storage';
 import { Course, Question, User, QuizAttempt } from '@/types';
 import {
@@ -87,6 +88,7 @@ const Admin: React.FC = () => {
         getUsers(),
         getQuizAttempts()
       ]);
+      console.log("Loaded Courses:", coursesData);
 
       setCourses(coursesData);
       setUsers(usersData);
@@ -250,6 +252,78 @@ const Admin: React.FC = () => {
     }
   };
 
+const handleToggleStatus = async (courseId: string, currentStatus: boolean) => {
+  const newStatus = !currentStatus;
+
+  try {
+    // Optimistic UI update
+    setCourses((prevCourses) =>
+      prevCourses.map((course) =>
+        course.id === courseId
+          ? { ...course, is_available: newStatus }
+          : course
+      )
+    );
+
+    await toggleCourseAvailability(courseId);
+
+    toast({
+      title: 'Status Updated',
+      description: `Course is now ${newStatus ? 'Visible' : 'Hidden'}`,
+    });
+  } catch (error) {
+    // Revert on failure
+    setCourses((prevCourses) =>
+      prevCourses.map((course) =>
+        course.id === courseId
+          ? { ...course, is_available: currentStatus }
+          : course
+      )
+    );
+    toast({
+      title: 'Update Failed',
+      description: 'Could not update course status.',
+      variant: 'destructive',
+    });
+  }
+};
+
+const handleToggleShowResult = async (courseId: string, currentStatus: boolean) => {
+  const newStatus = !currentStatus;
+
+  try {
+    // Optimistic UI update
+    setCourses((prevCourses) =>
+      prevCourses.map((course) =>
+        course.id === courseId
+          ? { ...course, show_result: newStatus }
+          : course
+      )
+    );
+
+    await toggleShowResult(courseId);
+
+    toast({
+      title: 'Show Result Updated',
+      description: `Course will now ${newStatus ? 'show' : 'hide'} results to students.`,
+    });
+  } catch (error) {
+    console.error('Failed to toggle show result', error);
+    // Revert on failure
+    setCourses((prevCourses) =>
+      prevCourses.map((course) =>
+        course.id === courseId
+          ? { ...course, show_result: currentStatus }
+          : course
+      )
+    );
+    toast({
+      title: 'Update Failed',
+      description: 'Could not update show result setting.',
+      variant: 'destructive',
+    });
+  }
+};
   // Analytics calculations
   const totalEnrollments = courses.reduce((sum, course) =>
     sum + Number(course.totalEnrollments || 0), 0
@@ -351,8 +425,8 @@ const Admin: React.FC = () => {
                     <TableRow>
                       <TableHead>Title</TableHead>
                       <TableHead>Category</TableHead>
-                      <TableHead>Difficulty</TableHead>
-                      <TableHead>Questions</TableHead>
+                      <TableHead>Show Result</TableHead>
+                      <TableHead>Available</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -362,9 +436,20 @@ const Admin: React.FC = () => {
                         <TableCell className="font-medium">{course.title}</TableCell>
                         <TableCell>{course.level}</TableCell>
                         <TableCell>
-                          <Badge variant="outline" className="capitalize">CBT</Badge>
+                          <Switch 
+                            checked={course.show_result} 
+                            onCheckedChange={() => handleToggleShowResult(course.id, course.show_result)} 
+                          />
+                          {course.show_result ? 'Show Result' : 'Hide Result'}
                         </TableCell>
-                        <TableCell>20</TableCell>
+                        <TableCell>
+                          <Switch 
+                            checked={course.is_available} 
+                            onCheckedChange={() => handleToggleStatus(course.id, course.is_available)} 
+                          />
+                          {course.is_available ? 'Available' : 'Hidden'}
+                        </TableCell>
+                       
                         <TableCell className="text-right">
                           <Button variant="ghost" size="icon" onClick={() => openCourseDialog(course)}>
                             <Pencil className="h-4 w-4" />
@@ -579,7 +664,7 @@ const Admin: React.FC = () => {
                 <CardContent>
                   <div className="space-y-4">
                     {/* Slice and map your attempts */}
-                    {quizAttempts.slice(0, 5).map((attempt) => {
+                    {quizAttempts.map((attempt) => {
 
                       // FIX 3: Use the nested User/Course objects directly from JSON
                       // No need to .find() in other arrays!

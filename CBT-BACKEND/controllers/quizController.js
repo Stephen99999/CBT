@@ -1,4 +1,5 @@
 // controllers/quizController.js
+const { where } = require('sequelize');
 const { quizAttempts, Course, User,Enrollment } = require('../models'); 
 
 
@@ -8,10 +9,12 @@ exports.getMyAttempts = async (req, res) => {
 
         const attempts = await quizAttempts.findAll({
             where: { user_id: userId },
-            // Include Course info so the UI can show "Mathematics 101"
             include: [{
                 model: Course,
-                attributes: ['title', 'description'] 
+                attributes: ['title', 'description'],
+                where: { show_result: true }, 
+                required: true
+                
             }],
             order: [['createdAt', 'DESC']] // Newest first
         });
@@ -158,6 +161,7 @@ exports.endQuiz = async (req, res) => {
             // This prevents them from complaining "My internet died", 
             // but also ensures they don't get points for cheating.
             console.log(`⚠️ User ${userId} submitted late! Force failing.`);
+            attempt.cheated_score = score;
             attempt.score = 0; 
             attempt.updatedAt = new Date();
             await attempt.save();

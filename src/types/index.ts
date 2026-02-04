@@ -17,6 +17,8 @@ export interface Course {
   time_allowed: string;
   totalEnrollments?: number | string;
   imageUrl: string;
+  is_available: boolean;
+  show_result: boolean;
 }
 
 // Question types
