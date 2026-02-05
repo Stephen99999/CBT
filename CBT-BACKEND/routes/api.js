@@ -23,6 +23,7 @@ router.get('/auth/me', authMiddleware, authController.getMe);
 // ==========================================
 // Public: View courses
 router.get('/courses', courseController.index);
+router.get('/courses/admin', authMiddleware,courseController.Adminindex);
 router.get('/courses/:id', courseController.show);
 
 // Protected: Manage Courses (Admin)

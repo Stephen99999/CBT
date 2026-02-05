@@ -9,6 +9,9 @@ import { User, Course, Question, QuizAttempt } from '@/types';
 export const getCourses = async (): Promise<Course[]> => {
   return apiRequest<Course[]>('/courses', { method: 'GET' });
 };
+export const getCoursesAdmin = async (): Promise<Course[]> => {
+  return apiRequest<Course[]>('/courses/admin', { method: 'GET' });
+};
 export const getEnrolledCourses = async (): Promise<Course[]> => {
   return apiRequest<Course[]>('/myCourses', { method: 'GET' });
 };

@@ -13,7 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useAuth } from '@/contexts/AuthContext';
 import { Switch } from '@/components/ui/switch'; 
 import {
-  getCourses, createCourse, updateCourse, deleteCourse,
+  getCoursesAdmin, createCourse, updateCourse, deleteCourse,
   getQuestionsByCourse, createQuestion, updateQuestion, deleteQuestion,
   getUsers, deleteUser, getQuizAttempts,
   toggleCourseAvailability, toggleShowResult 
@@ -84,7 +84,7 @@ const Admin: React.FC = () => {
     try {
       // Fetch all core data in parallel
       const [coursesData, usersData, attemptsData] = await Promise.all([
-        getCourses(),
+        getCoursesAdmin(),
         getUsers(),
         getQuizAttempts()
       ]);

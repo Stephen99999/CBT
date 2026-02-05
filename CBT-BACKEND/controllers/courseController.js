@@ -8,10 +8,6 @@ exports.index = async (req, res) => {
        
         let whereCondition = { is_available: true };
 
-       
-        if (req.user && req.user.role === 'admin') {
-            whereCondition = {}; // Remove restrictions, show hidden courses too
-        }
 
         const courses = await Course.findAll({
             where: whereCondition, 
@@ -42,6 +38,34 @@ exports.index = async (req, res) => {
 
 // controllers/courseController.js
 
+exports.Adminindex = async (req, res) => {
+
+    try {
+        const courses = await Course.findAll({
+            attributes: {
+                
+                include: [
+                    [
+                        // This writes a raw SQL subquery to count enrollments
+                        sequelize.literal(`(
+                            SELECT COUNT(*)
+                            FROM "Enrollments" AS enrollment
+                            WHERE
+                                enrollment.course_id = "Course"."id"
+                        )`),
+                        'totalEnrollments'
+                    ]
+                ]
+            },
+           
+             order: [['createdAt', 'DESC']] 
+        });
+        res.json(courses);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+};
 exports.myCourses = async (req, res) => {
     try {
         const userId = req.user.id; 
