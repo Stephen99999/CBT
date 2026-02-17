@@ -214,11 +214,8 @@ const Dashboard: React.FC = () => {
                           {(attempt.totalQuestions && attempt.totalQuestions > 0
                             ? ((attempt.score ?? 0) / attempt.totalQuestions) * 100
                             : (attempt.score ?? 0)
-                          ).toFixed(0)}%
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          {attempt.score ?? '—'}/{attempt.totalQuestions ?? '—'}
-                        </p>
+                          ).toFixed(0)}
+                        </p>            
                       </div>
                     </div>
                   ))}
