@@ -7,7 +7,7 @@ import { Progress } from '@/components/ui/progress';
 import { useAuth } from '@/contexts/AuthContext';
 import { getEnrolledCourses, getMyQuizAttempts } from '@/lib/storage'; 
 import { Course, QuizAttempt } from '@/types';
-import { BookOpen, TrendingUp, Calendar, ArrowRight, Award, Loader2 } from 'lucide-react';
+import { BookOpen,  Calendar, ArrowRight, Award, Loader2 } from 'lucide-react';
 
 const Dashboard: React.FC = () => {
   const { user } = useAuth();
