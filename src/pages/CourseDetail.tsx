@@ -133,7 +133,7 @@ const CourseDetail: React.FC = () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       document.removeEventListener("contextmenu", handleContextMenu);
     };
-  }, [isQuizMode, currentAttemptId, course]);
+  }, [isQuizMode, currentAttemptId, course, questions, selectedAnswers]);
 
   const handleAutoSubmit = (reason: string, isCheating: boolean = false) => {
     if (isSubmittingRef.current) return; // Prevent double calls

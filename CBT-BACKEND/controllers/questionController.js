@@ -1,4 +1,5 @@
 const { Question, Course, Enrollment,quizAttempts } = require('../models');
+const { Sequelize } = require('sequelize');
 
 // POST /api/questions (Create a question)
 exports.store = async (req, res) => {
@@ -32,7 +33,9 @@ exports.getByCourse = async (req, res) => {
         const { courseId } = req.params;
         const questions = await Question.findAll({
             where: { course_id: courseId },
-            // attributes: { exclude: ['correct_option'] } // Uncomment to hide answers
+            order: Sequelize.literal('RANDOM()'), 
+            // Limit the results to 20
+            limit: 20,
         });
         
         if (!questions.length) {

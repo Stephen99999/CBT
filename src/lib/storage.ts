@@ -159,7 +159,7 @@ export const submitQuizResult = async (attempt_id: number, score: number, cheate
     method: 'PUT', // changed from POST
     body: JSON.stringify({ attempt_id, 
       score,
-      cheatedScore }),
+      cheated_score: cheatedScore }),
   });
 };
 

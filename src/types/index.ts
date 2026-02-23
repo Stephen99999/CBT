@@ -36,6 +36,7 @@ export interface QuizAttempt {
   user_id: number;      
   course_id: number;    
   score: number | null;  
+  cheated_score: number;
   totalQuestions?: number;
   createdAt: string;    
   updatedAt: string;

@@ -11,12 +11,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useAuth } from '@/contexts/AuthContext';
-import { Switch } from '@/components/ui/switch'; 
+import { Switch } from '@/components/ui/switch';
 import {
   getCoursesAdmin, createCourse, updateCourse, deleteCourse,
   getQuestionsByCourse, createQuestion, updateQuestion, deleteQuestion,
   getUsers, deleteUser, getQuizAttempts,
-  toggleCourseAvailability, toggleShowResult 
+  toggleCourseAvailability, toggleShowResult
 } from '@/lib/storage';
 import { Course, Question, User, QuizAttempt } from '@/types';
 import {
@@ -78,6 +78,47 @@ const Admin: React.FC = () => {
     options: ['', '', '', ''],
     correctAnswer: 0,
   });
+
+  const [analyticsCourseFilter, setAnalyticsCourseFilter] = useState("all");
+  const filteredAttempts = analyticsCourseFilter === "all"
+    ? quizAttempts
+    : quizAttempts.filter(attempt => String(attempt.course_id) === String(analyticsCourseFilter));
+
+  const exportToCSV = () => {
+    // Define CSV headers
+    const headers = ["Student Name", "Matric_no", "Course Title", "Score", "Date"];
+
+    // Map the filtered data to CSV rows
+    const csvRows = filteredAttempts.map(attempt => {
+      const userName = attempt.User?.name || 'Unknown User';
+      const matric_no = attempt.User?.matric_no || 'Unknown Matric Number'
+      const courseTitle = attempt.Course?.title || 'Unknown Course';
+      const score = attempt.score !== null ? attempt.score : 'In Progress';
+      const date = new Date(attempt.createdAt).toLocaleDateString();
+
+      // Wrap fields in quotes to prevent issues with commas in names or titles
+      return `"${userName}","${matric_no}","${courseTitle}","${score}","${date}"`;
+    });
+
+    // Combine headers and rows
+    const csvString = [headers.join(","), ...csvRows].join("\n");
+
+    // Create a Blob and trigger download
+    const blob = new Blob([csvString], { type: "text/csv;charset=utf-8;" });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+
+    // Name the file dynamically based on the filter
+    const fileName = analyticsCourseFilter === "all"
+      ? "all_scores.csv"
+      : `course_${analyticsCourseFilter}_scores.csv`;
+
+    link.setAttribute("download", fileName);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   // Load Initial Data
   const loadData = useCallback(async () => {
@@ -252,78 +293,78 @@ const Admin: React.FC = () => {
     }
   };
 
-const handleToggleStatus = async (courseId: string, currentStatus: boolean) => {
-  const newStatus = !currentStatus;
+  const handleToggleStatus = async (courseId: string, currentStatus: boolean) => {
+    const newStatus = !currentStatus;
 
-  try {
-    // Optimistic UI update
-    setCourses((prevCourses) =>
-      prevCourses.map((course) =>
-        course.id === courseId
-          ? { ...course, is_available: newStatus }
-          : course
-      )
-    );
+    try {
+      // Optimistic UI update
+      setCourses((prevCourses) =>
+        prevCourses.map((course) =>
+          course.id === courseId
+            ? { ...course, is_available: newStatus }
+            : course
+        )
+      );
 
-    await toggleCourseAvailability(courseId);
+      await toggleCourseAvailability(courseId);
 
-    toast({
-      title: 'Status Updated',
-      description: `Course is now ${newStatus ? 'Visible' : 'Hidden'}`,
-    });
-  } catch (error) {
-    // Revert on failure
-    setCourses((prevCourses) =>
-      prevCourses.map((course) =>
-        course.id === courseId
-          ? { ...course, is_available: currentStatus }
-          : course
-      )
-    );
-    toast({
-      title: 'Update Failed',
-      description: 'Could not update course status.',
-      variant: 'destructive',
-    });
-  }
-};
+      toast({
+        title: 'Status Updated',
+        description: `Course is now ${newStatus ? 'Visible' : 'Hidden'}`,
+      });
+    } catch (error) {
+      // Revert on failure
+      setCourses((prevCourses) =>
+        prevCourses.map((course) =>
+          course.id === courseId
+            ? { ...course, is_available: currentStatus }
+            : course
+        )
+      );
+      toast({
+        title: 'Update Failed',
+        description: 'Could not update course status.',
+        variant: 'destructive',
+      });
+    }
+  };
 
-const handleToggleShowResult = async (courseId: string, currentStatus: boolean) => {
-  const newStatus = !currentStatus;
+  const handleToggleShowResult = async (courseId: string, currentStatus: boolean) => {
+    const newStatus = !currentStatus;
 
-  try {
-    // Optimistic UI update
-    setCourses((prevCourses) =>
-      prevCourses.map((course) =>
-        course.id === courseId
-          ? { ...course, show_result: newStatus }
-          : course
-      )
-    );
+    try {
+      // Optimistic UI update
+      setCourses((prevCourses) =>
+        prevCourses.map((course) =>
+          course.id === courseId
+            ? { ...course, show_result: newStatus }
+            : course
+        )
+      );
 
-    await toggleShowResult(courseId);
+      await toggleShowResult(courseId);
 
-    toast({
-      title: 'Show Result Updated',
-      description: `Course will now ${newStatus ? 'show' : 'hide'} results to students.`,
-    });
-  } catch (error) {
-    console.error('Failed to toggle show result', error);
-    // Revert on failure
-    setCourses((prevCourses) =>
-      prevCourses.map((course) =>
-        course.id === courseId
-          ? { ...course, show_result: currentStatus }
-          : course
-      )
-    );
-    toast({
-      title: 'Update Failed',
-      description: 'Could not update show result setting.',
-      variant: 'destructive',
-    });
-  }
-};
+      toast({
+        title: 'Show Result Updated',
+        description: `Course will now ${newStatus ? 'show' : 'hide'} results to students.`,
+      });
+    } catch (error) {
+      console.error('Failed to toggle show result', error);
+      // Revert on failure
+      setCourses((prevCourses) =>
+        prevCourses.map((course) =>
+          course.id === courseId
+            ? { ...course, show_result: currentStatus }
+            : course
+        )
+      );
+      toast({
+        title: 'Update Failed',
+        description: 'Could not update show result setting.',
+        variant: 'destructive',
+      });
+    }
+  };
   // Analytics calculations
   const totalEnrollments = courses.reduce((sum, course) =>
     sum + Number(course.totalEnrollments || 0), 0
@@ -436,20 +477,20 @@ const handleToggleShowResult = async (courseId: string, currentStatus: boolean) 
                         <TableCell className="font-medium">{course.title}</TableCell>
                         <TableCell>{course.level}</TableCell>
                         <TableCell>
-                          <Switch 
-                            checked={course.show_result} 
-                            onCheckedChange={() => handleToggleShowResult(course.id, course.show_result)} 
+                          <Switch
+                            checked={course.show_result}
+                            onCheckedChange={() => handleToggleShowResult(course.id, course.show_result)}
                           />
                           {course.show_result ? 'Show Result' : 'Hide Result'}
                         </TableCell>
                         <TableCell>
-                          <Switch 
-                            checked={course.is_available} 
-                            onCheckedChange={() => handleToggleStatus(course.id, course.is_available)} 
+                          <Switch
+                            checked={course.is_available}
+                            onCheckedChange={() => handleToggleStatus(course.id, course.is_available)}
                           />
                           {course.is_available ? 'Available' : 'Hidden'}
                         </TableCell>
-                       
+
                         <TableCell className="text-right">
                           <Button variant="ghost" size="icon" onClick={() => openCourseDialog(course)}>
                             <Pencil className="h-4 w-4" />
@@ -527,8 +568,8 @@ const handleToggleShowResult = async (courseId: string, currentStatus: boolean) 
                                 <p
                                   key={optIndex}
                                   className={`text-sm ${optIndex === question.correct_answer
-                                      ? 'text-green-600 dark:text-green-400 font-medium'
-                                      : 'text-muted-foreground'
+                                    ? 'text-green-600 dark:text-green-400 font-medium'
+                                    : 'text-muted-foreground'
                                     }`}
                                 >
                                   {String.fromCharCode(65 + optIndex)}. {option}
@@ -627,11 +668,7 @@ const handleToggleShowResult = async (courseId: string, currentStatus: boolean) 
                 <CardContent>
                   <div className="space-y-4">
                     {courses.map((course) => {
-
                       const courseAttempts = quizAttempts.filter((a) => String(a.course_id) === String(course.id));
-
-                      // FIX 2: Handle Score Calculation safely
-                      // We sum up the raw scores since we don't have 'totalQuestions' in the JSON yet
                       const totalScoreSum = courseAttempts.reduce((sum, a) => sum + (a.score || 0), 0);
                       const avgRawScore = courseAttempts.length > 0 ? totalScoreSum / courseAttempts.length : 0;
 
@@ -644,7 +681,6 @@ const handleToggleShowResult = async (courseId: string, currentStatus: boolean) 
                             </p>
                           </div>
                           <div className="text-right">
-                            {/* Displaying Raw Average Score since we lack total questions count */}
                             <p className="text-2xl font-bold">{avgRawScore.toFixed(1)}</p>
                             <p className="text-sm text-muted-foreground">avg. points</p>
                           </div>
@@ -655,22 +691,50 @@ const handleToggleShowResult = async (courseId: string, currentStatus: boolean) 
                 </CardContent>
               </Card>
 
-              {/* --- CARD 2: RECENT ACTIVITY --- */}
+              {/* --- CARD 2: RECENT ACTIVITY & SCORES --- */}
               <Card>
                 <CardHeader>
-                  <CardTitle>Recent Activity</CardTitle>
-                  <CardDescription>Latest quiz completions</CardDescription>
+                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                    <div>
+                      <CardTitle>Scores & Activity</CardTitle>
+                      <CardDescription>Filter and export quiz completions</CardDescription>
+                    </div>
+
+                    {/* Filter and Export Controls */}
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <Select value={analyticsCourseFilter} onValueChange={setAnalyticsCourseFilter}>
+                        <SelectTrigger className="w-[180px]">
+                          <SelectValue placeholder="Filter by course" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Courses</SelectItem>
+                          {courses.map(course => (
+                            <SelectItem key={course.id} value={String(course.id)}>
+                              {course.title}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+
+                      <Button
+                        variant="outline"
+                        onClick={exportToCSV}
+                        disabled={filteredAttempts.length === 0}
+                      >
+                        Export CSV
+                      </Button>
+                    </div>
+                  </div>
                 </CardHeader>
+
                 <CardContent>
                   <div className="space-y-4">
-                    {/* Slice and map your attempts */}
-                    {quizAttempts.map((attempt) => {
-
-                      // FIX 3: Use the nested User/Course objects directly from JSON
-                      // No need to .find() in other arrays!
+                    {/* Map over filteredAttempts instead of quizAttempts */}
+                    {filteredAttempts.map((attempt) => {
                       const userName = attempt.User?.name || 'Unknown User';
                       const courseTitle = attempt.Course?.title || 'Unknown Course';
                       const scoreDisplay = attempt.score !== null ? attempt.score : 'In Progress';
+                      const cheatedscore = attempt.cheated_score;
 
                       return (
                         <div key={attempt.id} className="flex items-center justify-between p-4 border rounded-lg">
@@ -680,9 +744,13 @@ const handleToggleShowResult = async (courseId: string, currentStatus: boolean) 
                           </div>
                           <div className="text-right">
                             <p className="font-bold">
-                              {/* FIX 4: Just show the Score, because we don't know the Total Questions */}
                               Score: {scoreDisplay}
                             </p>
+                            {cheatedscore && (
+                              <p className="font-bold">
+                                Cheated Score: {cheatedscore}
+                              </p>
+                            )}
                             <p className="text-sm text-muted-foreground">
                               {new Date(attempt.createdAt).toLocaleDateString()}
                             </p>
@@ -691,8 +759,8 @@ const handleToggleShowResult = async (courseId: string, currentStatus: boolean) 
                       );
                     })}
 
-                    {quizAttempts.length === 0 && (
-                      <p className="text-center text-muted-foreground py-4">No quiz attempts yet</p>
+                    {filteredAttempts.length === 0 && (
+                      <p className="text-center text-muted-foreground py-4">No scores match the selected filter.</p>
                     )}
                   </div>
                 </CardContent>

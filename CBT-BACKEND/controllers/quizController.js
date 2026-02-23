@@ -110,7 +110,7 @@ exports.startquiz = async (req, res) => {
 
 exports.endQuiz = async (req, res) => {
     try {
-        const { attempt_id, score } = req.body;
+        const { attempt_id, score,cheated_score } = req.body;
         const userId = req.user.id;
 
         // 1. Find the attempt
@@ -171,6 +171,7 @@ exports.endQuiz = async (req, res) => {
 
         // 4. If time is valid, save the real score
         attempt.score = score;
+        attempt.cheated_score = cheated_score
         attempt.updatedAt = new Date();
         
         await attempt.save();
