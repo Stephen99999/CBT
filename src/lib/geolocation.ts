@@ -258,7 +258,7 @@ const getCurrentLocationIOS = async (options: LocationOptions = {}): Promise<Geo
               return;
             }
           }
-          if ((error as GeoError).code === PERMISSION_DENIED) {
+          if (error.code === PERMISSION_DENIED) {
             finish(null, wrapped);
             return;
           }
