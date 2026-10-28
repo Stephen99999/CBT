@@ -35,6 +35,11 @@ module.exports = (sequelize, DataTypes) => {
 
     // Students can only mark attendance within this radius (meters) of the admin's location
     allowed_radius: DataTypes.INTEGER,
+
+    // How accurately the admin's device reported this location, in meters.
+    // NULL when the class predates this field. It is folded into the fence so a
+    // class captured with a ±400 m fix doesn't pretend to be a 15 m fence.
+    location_accuracy: DataTypes.DOUBLE,
   }, {
     sequelize,
     modelName: 'Class',

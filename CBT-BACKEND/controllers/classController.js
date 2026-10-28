@@ -29,6 +29,13 @@ const MAX_USABLE_ACCURACY_METERS = 1000;
 const formatRoughAccuracy = (meters) =>
   meters >= 1000 ? `about ${Math.round(meters / 1000)} km` : `about ${Math.round(meters)} m`;
 
+// Stores a reported accuracy as-is, or NULL when it is absent/invalid
+// (classes created before this field existed have no capture quality recorded).
+const toAccuracyOrNull = (accuracy) => {
+  const meters = Number(accuracy);
+  return Number.isFinite(meters) && meters > 0 ? meters : null;
+};
+
 // Human-readable reason to reject a reported GPS accuracy, or null when the fix
 // is good enough to use. A missing accuracy (older clients) is accepted.
 const coarseFixMessage = (accuracy, purpose) => {
@@ -135,6 +142,9 @@ exports.store = async (req, res) => {
       latitude,
       longitude,
       allowed_radius,          // defaults to 100 if omitted
+      // How good that location was: folded into the attendance fence later,
+      // and shown to the admin so a suspect capture is visible at a glance.
+      location_accuracy: toAccuracyOrNull(accuracy),
       admin_id: req.user.id
     });
 
@@ -236,7 +246,17 @@ exports.markAttendance = async (req, res) => {
       latitude, longitude
     );
 
-    const allowance = singleClass.allowed_radius + accuracyTolerance;
+    // The class's own location is a measurement too: a classroom captured with
+    // a ±60 m fix is itself anywhere inside a ±60 m circle, so its error counts
+    // towards the fence exactly like the student's does. Capped the same way so
+    // a poor capture can't open the gate completely. Classes created before
+    // this field existed have no recorded accuracy and behave as they always did.
+    const classAccuracy = toAccuracyOrNull(singleClass.location_accuracy);
+    const classTolerance = classAccuracy
+      ? Math.min(classAccuracy, MAX_ACCURACY_TOLERANCE_METERS)
+      : 0;
+
+    const allowance = singleClass.allowed_radius + classTolerance + accuracyTolerance;
 
     if (distance > allowance) {
       // Logged so a bad GPS fix (or a class created from a wrong location)
@@ -247,6 +267,7 @@ exports.markAttendance = async (req, res) => {
         student_position: [latitude, longitude],
         distance_meters: Math.round(distance),
         allowed_radius_meters: singleClass.allowed_radius,
+        class_location_accuracy_meters: classAccuracy ? Math.round(classAccuracy) : null,
         accuracy_tolerance_meters: accuracyTolerance
       });
 
@@ -256,6 +277,11 @@ exports.markAttendance = async (req, res) => {
         your_position: { latitude, longitude },
         your_accuracy_meters: Math.round(reportedAccuracy) || null,
         class_position: { latitude: singleClass.latitude, longitude: singleClass.longitude },
+        class_location_accuracy_meters: classAccuracy ? Math.round(classAccuracy) : null,
+        // Tolerances actually applied (both capped at 150 m) — the raw
+        // accuracies above are informational, these are what widened the fence.
+        class_location_tolerance_meters: classTolerance,
+        accuracy_tolerance_meters: accuracyTolerance,
         allowed_radius_meters: singleClass.allowed_radius,
         allowed_with_accuracy_meters: Math.round(allowance)
       });
@@ -281,6 +307,7 @@ exports.markAttendance = async (req, res) => {
     res.status(201).json({
       msg: 'Attendance marked successfully!',
       accuracy_meters: Math.round(reportedAccuracy) || null,
+      class_location_accuracy_meters: classAccuracy ? Math.round(classAccuracy) : null,
       ...attendance.toJSON()
     });
   } catch (err) {

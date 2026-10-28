@@ -626,6 +626,7 @@ const Admin: React.FC = () => {
                         <TableHead>Starts</TableHead>
                         <TableHead>Duration</TableHead>
                         <TableHead>Radius</TableHead>
+                        <TableHead>Location quality</TableHead>
                         <TableHead>Admin</TableHead>
                         <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
@@ -640,6 +641,29 @@ const Admin: React.FC = () => {
                             <span className="flex items-center gap-1">
                               <MapPin className="h-3 w-3" />
                               {cls.allowed_radius} m
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            {/* How good the fix was when this class was captured —
+                                a coarse one means the fence is measured from a
+                                location that is itself off. */}
+                            <span
+                              className={
+                                cls.location_accuracy != null && cls.location_accuracy > 100
+                                  ? 'text-destructive font-medium'
+                                  : 'text-muted-foreground'
+                              }
+                              title={
+                                cls.location_accuracy == null
+                                  ? 'Captured before this field existed — accuracy unknown'
+                                  : cls.location_accuracy > 100
+                                    ? 'This location was captured with a coarse fix — re-create the class for a trustworthy fence'
+                                    : 'Accuracy of the location captured when this class was created'
+                              }
+                            >
+                              {cls.location_accuracy != null
+                                ? `±${Math.round(cls.location_accuracy)} m`
+                                : 'unknown'}
                             </span>
                           </TableCell>
                           <TableCell>{cls.admin?.name || '—'}</TableCell>

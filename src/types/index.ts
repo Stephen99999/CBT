@@ -64,6 +64,8 @@ export interface ClassInfo {
   latitude: number;
   longitude: number;
   allowed_radius: number;    // meters
+  /** Accuracy (m) of the fix captured when the class was created; null when unknown */
+  location_accuracy?: number | null;
   createdAt?: string;
   updatedAt?: string;
   admin?: {

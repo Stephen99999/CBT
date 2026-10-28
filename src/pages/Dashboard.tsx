@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { useAuth } from '@/contexts/AuthContext';
-import { getEnrolledCourses, getMyQuizAttempts, getClasses, getMyAttendance, markClassAttendance } from '@/lib/storage';
+import { getEnrolledCourses, getMyQuizAttempts, getClasses, getMyAttendance, markClassAttendance, describeGeofenceRejection } from '@/lib/storage';
 import { useToast } from '@/hooks/use-toast';
 import { Course, QuizAttempt, ClassInfo, AttendanceRecord } from '@/types';
 import { BookOpen, Calendar, ArrowRight, Award, Loader2, MapPin, Clock, CheckCircle2 } from 'lucide-react';
@@ -115,38 +115,12 @@ const Dashboard: React.FC = () => {
             : 'Attendance marked successfully.',
       });
     } catch (error: any) {
-      // The geofence rejection carries the numbers, so show them instead of
-      // the bare "too far" message — otherwise the student can't tell whether
-      // they moved or the class location itself was captured somewhere else.
-      const details = error?.data;
-      let description = error?.message || 'Something went wrong.';
-
-      if (details?.your_distance_meters != null) {
-        const radius = details.allowed_radius_meters;
-        const allowed = details.allowed_with_accuracy_meters ?? radius;
-        // The allowance is the radius the lecturer set PLUS the GPS-error
-        // tolerance, so a 10 m fence shows as 160 m. Say that out loud,
-        // otherwise the number looks like the radius was ignored.
-        const tolerance =
-          typeof radius === 'number' && typeof allowed === 'number' ? Math.round(allowed - radius) : 0;
-        const accuracy = details.your_accuracy_meters
-          ? ` (±${details.your_accuracy_meters} m GPS accuracy)`
-          : '';
-        const allowanceText =
-          tolerance > 0
-            ? `This class allows ${radius} m, plus up to ${tolerance} m for GPS error (${allowed} m in total).`
-            : `This class allows ${allowed} m.`;
-
-        description = `You are about ${details.your_distance_meters} m away${accuracy}. ${allowanceText}`;
-
-        if (details.your_distance_meters > 1000) {
-          description +=
-            ' That is far beyond GPS error: the stored class location is wrong — it was captured from a device without GPS (a laptop guesses the city from the network). Ask your lecturer to re-create the class while standing in the room.';
-        } else if (details.your_accuracy_meters > 500) {
-          description +=
-            ' Your own location is also imprecise — move near a window or use a phone with GPS on.';
-        }
-      }
+      // The geofence rejection carries the numbers (distance, radius and both
+      // GPS-error tolerances), so explain those instead of the bare "too far"
+      // message — otherwise the student can't tell whether they moved, their fix
+      // was poor, or the class location itself was captured somewhere else.
+      const description =
+        describeGeofenceRejection(error?.data) || error?.message || 'Something went wrong.';
 
       toast({
         title: 'Attendance not recorded',

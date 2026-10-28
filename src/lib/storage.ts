@@ -277,6 +277,77 @@ export const markClassAttendance = async (classId: string | number): Promise<Att
   });
 };
 
+/**
+ * The numbers a rejected student needs to understand why the fence said no.
+ * Returned by POST /classes/:id/attendance with a 403.
+ */
+export interface GeofenceRejection {
+  msg?: string;
+  your_distance_meters?: number;
+  /** Raw accuracy the browser reported for this attempt (may exceed the cap) */
+  your_accuracy_meters?: number | null;
+  class_position?: { latitude: number; longitude: number };
+  /** Raw accuracy of the fix captured when the class was created */
+  class_location_accuracy_meters?: number | null;
+  /** Tolerances actually applied — both are capped server-side at 150 m */
+  accuracy_tolerance_meters?: number;
+  class_location_tolerance_meters?: number;
+  allowed_radius_meters?: number;
+  allowed_with_accuracy_meters?: number;
+}
+
+/**
+ * Turns a geofence rejection into a sentence a student can act on.
+ *
+ * The allowance is the lecturer's radius PLUS two GPS-error tolerances — how
+ * precisely the class location was captured, and how precise this fix is — so
+ * the arithmetic is spelled out; a bare "allows 310 m" reads as if the radius
+ * they set was ignored. Returns '' when the payload carries no distance (a
+ * different failure), so callers can fall back to the plain error message.
+ */
+export const describeGeofenceRejection = (details?: GeofenceRejection | null): string => {
+  const distance = details?.your_distance_meters;
+  if (distance == null) return '';
+
+  const radius = details.allowed_radius_meters;
+  const allowed = details.allowed_with_accuracy_meters ?? radius;
+  // Report the applied tolerances (capped at 150 m each), not the raw
+  // accuracies — a ±608 m fix only ever widens the fence by 150 m, and a
+  // message that quoted 608 next to a total of 150 would not add up.
+  const classTolerance = Math.max(0, Math.round(details.class_location_tolerance_meters ?? 0));
+  const studentTolerance = Math.max(0, Math.round(details.accuracy_tolerance_meters ?? 0));
+  const studentAccuracy = Math.max(0, Math.round(details.your_accuracy_meters ?? 0));
+  const total =
+    typeof radius === 'number' && typeof allowed === 'number'
+      ? Math.round(allowed - radius)
+      : classTolerance + studentTolerance;
+
+  const accuracyText = studentAccuracy ? ` (±${studentAccuracy} m GPS accuracy)` : '';
+  const toleranceParts: string[] = [];
+  if (classTolerance > 0) toleranceParts.push(`${classTolerance} m measured when this class was created`);
+  if (studentTolerance > 0) toleranceParts.push(`${studentTolerance} m for your own fix`);
+  const toleranceText =
+    total <= 0
+      ? ''
+      : toleranceParts.length
+        ? ` plus ${toleranceParts.join(' and ')} = ${total} m in total`
+        : ` plus up to ${total} m of GPS-error tolerance`;
+
+  let message = `You are about ${distance} m away${accuracyText}. This class allows ${
+    radius ?? allowed
+  } m${toleranceText}.`;
+
+  if (distance > 1000) {
+    message +=
+      ' That is far beyond GPS error: the stored class location is wrong — it was captured from a device without GPS (a laptop guesses the city from the network). Ask your lecturer to re-create the class while standing in the room.';
+  } else if (studentAccuracy > 500) {
+    message +=
+      ' Your own location is also imprecise — move near a window or use a phone with GPS on.';
+  }
+
+  return message;
+};
+
 /** Student: their own attendance history */
 export const getMyAttendance = (): Promise<AttendanceRecord[]> =>
   apiRequest<AttendanceRecord[]>('/attendance/me', { method: 'GET' });
