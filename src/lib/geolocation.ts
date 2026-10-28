@@ -38,12 +38,27 @@ export const CONVERGENCE_METERS = 15;
  */
 export const MAX_WINDOW_MS = 10000;
 
+/** iOS often needs more time/patience to get a good GPS fix */
+export const IOS_SAMPLE_COUNT = 8;
+export const IOS_MAX_WINDOW_MS = 15000;
+/** On iOS, keep watching until we get accuracy better than this or run out of time */
+export const IOS_TARGET_ACCURACY = 50;
+
 export interface LocationOptions extends PositionOptions {
   /** How many readings to take (default SAMPLE_COUNT). */
   samples?: number;
   /** Pause between readings in ms (default SAMPLE_INTERVAL_MS). */
   intervalMs?: number;
 }
+
+const isIOS = (): boolean => {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || navigator.vendor || (window as any).opera || '';
+  // iPadOS 13+ reports as MacIntel but has touch points
+  if (/iPad|iPhone|iPod/.test(ua)) return true;
+  if (/Macintosh/.test(ua) && navigator.maxTouchPoints && navigator.maxTouchPoints > 1) return true;
+  return false;
+};
 
 const formatRoughAccuracy = (meters: number): string =>
   meters >= 1000 ? `about ${Math.round(meters / 1000)} km` : `about ${Math.round(meters)} m`;
@@ -126,6 +141,162 @@ const spreadMeters = (fixes: GeoPoint[]): number => {
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
+ * iOS-optimized capture using watchPosition(). On iOS, getCurrentPosition() often
+ * returns a single coarse reading; watchPosition() lets the device refine the fix
+ * over time as it acquires better GPS data.
+ */
+const getCurrentLocationIOS = async (options: LocationOptions = {}): Promise<GeoPoint> => {
+  const { ...positionOptions } = options;
+
+  const requestOptions: PositionOptions = {
+    enableHighAccuracy: true,
+    timeout: 20000,
+    maximumAge: 0,
+    ...positionOptions,
+  };
+
+  if (!('geolocation' in navigator)) {
+    throw new Error('Geolocation is not supported by this browser.');
+  }
+
+  return new Promise((resolve, reject) => {
+    const collected: GeoPoint[] = [];
+    const startedAt = Date.now();
+    let watchId: number | null = null;
+    let settled = false;
+
+    const finish = (result: GeoPoint | null, error?: Error) => {
+      if (settled) return;
+      settled = true;
+      if (watchId !== null) {
+        try {
+          navigator.geolocation.clearWatch(watchId);
+        } catch {
+          // ignore
+        }
+        watchId = null;
+      }
+      if (error) reject(error);
+      else if (result) resolve(result);
+      else reject(new Error('Could not get your location.'));
+    };
+
+    try {
+      watchId = navigator.geolocation.watchPosition(
+        (position) => {
+          const fix: GeoPoint = {
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            accuracy: position.coords.accuracy,
+          };
+          collected.push(fix);
+
+          // If we get a good fix on iOS, we can accept it earlier
+          if (fix.accuracy <= IOS_TARGET_ACCURACY && collected.length >= 2) {
+            // Use median of recent good readings
+            const recent = collected.slice(-Math.min(collected.length, 4));
+            const best: GeoPoint = {
+              latitude: median(recent.map((f) => f.latitude)),
+              longitude: median(recent.map((f) => f.longitude)),
+              accuracy: Math.min(...recent.map((f) => f.accuracy)), // best accuracy
+            };
+            const problem = describeAccuracyProblem(best.accuracy);
+            if (!problem) {
+              finish(best);
+              return;
+            }
+          }
+
+          // Or if we've collected enough and converged
+          if (
+            collected.length >= 4 &&
+            (Date.now() - startedAt >= IOS_MAX_WINDOW_MS || (spreadMeters(collected.slice(-3)) <= CONVERGENCE_METERS))
+          ) {
+            const best: GeoPoint = {
+              latitude: median(collected.map((f) => f.latitude)),
+              longitude: median(collected.map((f) => f.longitude)),
+              accuracy: median(collected.map((f) => f.accuracy)),
+            };
+            const problem = describeAccuracyProblem(best.accuracy);
+            if (!problem) {
+              finish(best);
+              return;
+            }
+          }
+
+          if (Date.now() - startedAt >= IOS_MAX_WINDOW_MS && collected.length > 0) {
+            const best: GeoPoint = {
+              latitude: median(collected.map((f) => f.latitude)),
+              longitude: median(collected.map((f) => f.longitude)),
+              accuracy: median(collected.map((f) => f.accuracy)),
+            };
+            const problem = describeAccuracyProblem(best.accuracy);
+            if (!problem) {
+              finish(best);
+              return;
+            }
+            // Even if not great, if it's not city-level bad maybe still try? But our guard will reject
+            finish(null, new Error(problem));
+            return;
+          }
+        },
+        (error) => {
+          const wrapped: GeoError = new Error(
+            ERRORS[error.code] || error.message || 'Could not get your location.'
+          );
+          wrapped.code = error.code;
+          if (collected.length > 0) {
+            // If we have some readings, try to use them even if watch errors
+            const best: GeoPoint = {
+              latitude: median(collected.map((f) => f.latitude)),
+              longitude: median(collected.map((f) => f.longitude)),
+              accuracy: median(collected.map((f) => f.accuracy)),
+            };
+            const problem = describeAccuracyProblem(best.accuracy);
+            if (!problem) {
+              finish(best);
+              return;
+            }
+          }
+          if ((error as GeoError).code === PERMISSION_DENIED) {
+            finish(null, wrapped);
+            return;
+          }
+          // For other errors, if we have readings use them, else fail
+          if (collected.length === 0) {
+            finish(null, wrapped);
+          }
+        },
+        requestOptions
+      );
+    } catch (e) {
+      finish(null, e as Error);
+      return;
+    }
+
+    // Safety timeout
+    setTimeout(() => {
+      if (settled) return;
+      if (collected.length > 0) {
+        const best: GeoPoint = {
+          latitude: median(collected.map((f) => f.latitude)),
+          longitude: median(collected.map((f) => f.longitude)),
+          accuracy: median(collected.map((f) => f.accuracy)),
+        };
+        const problem = describeAccuracyProblem(best.accuracy);
+        if (!problem) {
+          finish(best);
+          return;
+        }
+        finish(null, new Error(problem));
+        return;
+      }
+      finish(null, new Error('Getting your location took too long. Please try again.'));
+    }, IOS_MAX_WINDOW_MS + 5000);
+  });
+};
+
+/**
  * Captures the current position from several readings and returns the median
  * one. A reading is only accepted once its accuracy is good enough.
  *
@@ -134,6 +305,11 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
  * until three of them already agree within CONVERGENCE_METERS.
  */
 export const getCurrentLocation = async (options: LocationOptions = {}): Promise<GeoPoint> => {
+  // Use watchPosition() approach on iOS for better accuracy
+  if (isIOS()) {
+    return getCurrentLocationIOS(options);
+  }
+
   const { samples = SAMPLE_COUNT, intervalMs = SAMPLE_INTERVAL_MS, ...positionOptions } = options;
 
   const requestOptions: PositionOptions = {
