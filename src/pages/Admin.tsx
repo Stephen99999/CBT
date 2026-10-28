@@ -1000,7 +1000,9 @@ const Admin: React.FC = () => {
             <DialogTitle>Create Class</DialogTitle>
             <DialogDescription>
               Your current location will be captured automatically and saved as the
-              attendance zone when you create the class.
+              attendance zone when you create the class. It has to come from real GPS:
+              if the browser can only locate you to within about a kilometre (typical on
+              a laptop), the class is refused rather than saved in the wrong place.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">

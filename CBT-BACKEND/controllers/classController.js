@@ -21,6 +21,27 @@ const haversineMeters = (lat1, lng1, lat2, lng2) => {
   return R * c * 1000;
 };
 
+// A browser fix worse than this is a city-level guess (IP/WiFi lookup), not a
+// position — typical on laptops or with location services off. Using it would
+// store the wrong classroom, or blame a student for being kilometres away.
+const MAX_USABLE_ACCURACY_METERS = 1000;
+
+const formatRoughAccuracy = (meters) =>
+  meters >= 1000 ? `about ${Math.round(meters / 1000)} km` : `about ${Math.round(meters)} m`;
+
+// Human-readable reason to reject a reported GPS accuracy, or null when the fix
+// is good enough to use. A missing accuracy (older clients) is accepted.
+const coarseFixMessage = (accuracy, purpose) => {
+  const meters = Number(accuracy);
+  if (!Number.isFinite(meters) || meters <= MAX_USABLE_ACCURACY_METERS) return null;
+
+  return (
+    `Location is too imprecise to ${purpose}: the browser only knows it to within ` +
+    `${formatRoughAccuracy(meters)}. Turn on GPS / precise location and try again — ` +
+    `laptops and desktops often guess the position from their network.`
+  );
+};
+
 // ==========================================
 // CLASS CRUD
 // ==========================================
@@ -66,12 +87,22 @@ exports.store = async (req, res) => {
       return res.status(403).json({ error: 'Access denied: Admins only' });
     }
 
-    const { name, start_time, duration_minutes, latitude, longitude, allowed_radius } = req.body;
+    const { name, start_time, duration_minutes, latitude, longitude, allowed_radius, accuracy } = req.body;
 
     // Location MUST come in the request (admin's current location)
     if (latitude === undefined || longitude === undefined) {
       return res.status(400).json({
         msg: 'latitude and longitude are required — send the admin\'s current location'
+      });
+    }
+
+    // Refuse a position the browser itself admits is only accurate to ~1 km+:
+    // it would become the classroom and then reject every student standing in it.
+    const coarseMessage = coarseFixMessage(accuracy, 'use as the class location');
+    if (coarseMessage) {
+      return res.status(400).json({
+        msg: coarseMessage,
+        your_accuracy_meters: Math.round(Number(accuracy))
       });
     }
 
@@ -161,6 +192,16 @@ exports.markAttendance = async (req, res) => {
     if (latitude === undefined || longitude === undefined) {
       return res.status(400).json({
         msg: 'latitude and longitude are required — send the student\'s current location'
+      });
+    }
+
+    // A fix the browser admits is only accurate to ~1 km+ cannot place the
+    // student inside the fence; say so instead of reporting a bogus distance.
+    const coarseMessage = coarseFixMessage(accuracy, 'mark attendance');
+    if (coarseMessage) {
+      return res.status(400).json({
+        msg: coarseMessage,
+        your_accuracy_meters: Math.round(Number(accuracy))
       });
     }
 

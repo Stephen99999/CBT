@@ -122,14 +122,29 @@ const Dashboard: React.FC = () => {
       let description = error?.message || 'Something went wrong.';
 
       if (details?.your_distance_meters != null) {
-        const allowed = details.allowed_with_accuracy_meters ?? details.allowed_radius_meters;
+        const radius = details.allowed_radius_meters;
+        const allowed = details.allowed_with_accuracy_meters ?? radius;
+        // The allowance is the radius the lecturer set PLUS the GPS-error
+        // tolerance, so a 10 m fence shows as 160 m. Say that out loud,
+        // otherwise the number looks like the radius was ignored.
+        const tolerance =
+          typeof radius === 'number' && typeof allowed === 'number' ? Math.round(allowed - radius) : 0;
         const accuracy = details.your_accuracy_meters
           ? ` (±${details.your_accuracy_meters} m GPS accuracy)`
           : '';
-        description = `You are about ${details.your_distance_meters} m away${accuracy}, but this class allows ${allowed} m.`;
+        const allowanceText =
+          tolerance > 0
+            ? `This class allows ${radius} m, plus up to ${tolerance} m for GPS error (${allowed} m in total).`
+            : `This class allows ${allowed} m.`;
+
+        description = `You are about ${details.your_distance_meters} m away${accuracy}. ${allowanceText}`;
+
         if (details.your_distance_meters > 1000) {
           description +=
-            ' That is far more than GPS error — the class location was probably captured somewhere else, so ask your lecturer to re-create it.';
+            ' That is far beyond GPS error: the stored class location is wrong — it was captured from a device without GPS (a laptop guesses the city from the network). Ask your lecturer to re-create the class while standing in the room.';
+        } else if (details.your_accuracy_meters > 500) {
+          description +=
+            ' Your own location is also imprecise — move near a window or use a phone with GPS on.';
         }
       }
 

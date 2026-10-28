@@ -223,6 +223,10 @@ export const getClassById = (classId: string | number): Promise<ClassInfo> =>
  * Admin creates a class. The admin's CURRENT location is auto-captured
  * from the browser GPS and sent as latitude/longitude together with
  * the class details. The browser shows the "allow location" prompt.
+ *
+ * The accuracy is sent as well: a coarse fix (a laptop's IP/WiFi guess) would
+ * be stored as the classroom and then reject every student standing in it, so
+ * the backend can refuse it instead of trusting the coordinates blindly.
  */
 export const createClass = async (data: ClassFormData): Promise<ClassInfo> => {
   const location = await getCurrentLocation(); // ← auto-injected admin location
@@ -236,6 +240,7 @@ export const createClass = async (data: ClassFormData): Promise<ClassInfo> => {
       allowed_radius: data.allowed_radius,
       latitude: location.latitude,
       longitude: location.longitude,
+      accuracy: location.accuracy,
     }),
   });
 };

@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/lib/api', () => ({ apiRequest: mocks.apiRequest }));
 vi.mock('@/lib/geolocation', () => ({ getCurrentLocation: mocks.getCurrentLocation }));
 
-import { markClassAttendance } from '@/lib/storage';
+import { createClass, markClassAttendance } from '@/lib/storage';
 
 describe('markClassAttendance', () => {
   beforeEach(() => {
@@ -41,5 +41,36 @@ describe('markClassAttendance', () => {
     await expect(markClassAttendance(42)).rejects.toMatchObject({
       data: { your_distance_meters: 279656, allowed_radius_meters: 1 },
     });
+  });
+});
+
+describe('createClass', () => {
+  beforeEach(() => {
+    mocks.apiRequest.mockReset().mockResolvedValue({ id: 1 });
+    mocks.getCurrentLocation
+      .mockReset()
+      .mockResolvedValue({ latitude: 6.4474, longitude: 3.3903, accuracy: 18 });
+  });
+
+  it('sends the accuracy of the captured class location', async () => {
+    // A coarse fix stored as the classroom rejects every student standing in
+    // it, so the backend needs the accuracy to be able to refuse it.
+    await createClass({ name: 'CSH 303', start_time: '2026-10-28T10:00' });
+
+    const [endpoint, options] = mocks.apiRequest.mock.calls[0];
+    expect(endpoint).toBe('/classes');
+    expect(JSON.parse(options.body)).toMatchObject({
+      name: 'CSH 303',
+      latitude: 6.4474,
+      longitude: 3.3903,
+      accuracy: 18,
+    });
+  });
+
+  it('still sends an absolute UTC start time', async () => {
+    await createClass({ name: 'CSH 303', start_time: '2026-10-28T10:00' });
+
+    const body = JSON.parse(mocks.apiRequest.mock.calls[0][1].body);
+    expect(body.start_time).toMatch(/Z$/);
   });
 });
