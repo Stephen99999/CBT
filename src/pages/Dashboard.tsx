@@ -3,11 +3,13 @@ import { Link, useNavigate } from 'react-router-dom';
 import Layout from '@/components/layout/Layout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { useAuth } from '@/contexts/AuthContext';
-import { getEnrolledCourses, getMyQuizAttempts } from '@/lib/storage'; 
-import { Course, QuizAttempt } from '@/types';
-import { BookOpen,  Calendar, ArrowRight, Award, Loader2 } from 'lucide-react';
+import { getEnrolledCourses, getMyQuizAttempts, getClasses, getMyAttendance, markClassAttendance } from '@/lib/storage';
+import { useToast } from '@/hooks/use-toast';
+import { Course, QuizAttempt, ClassInfo, AttendanceRecord } from '@/types';
+import { BookOpen, Calendar, ArrowRight, Award, Loader2, MapPin, Clock, CheckCircle2 } from 'lucide-react';
 
 const Dashboard: React.FC = () => {
   const { user } = useAuth();
@@ -15,35 +17,43 @@ const Dashboard: React.FC = () => {
   const [enrolledCourses, setEnrolledCourses] = useState<Course[]>([]);
   const [recentAttempts, setRecentAttempts] = useState<QuizAttempt[]>([]);
   const [loading, setLoading] = useState(true);
+  const [liveClasses, setLiveClasses] = useState<ClassInfo[]>([]);
+  const [myAttendance, setMyAttendance] = useState<AttendanceRecord[]>([]);
+  const [markingId, setMarkingId] = useState<number | null>(null);
+  const { toast } = useToast();
 
   // Fallback image since your API logs show 'imageUrl' is missing from the DB response
   const DEFAULT_IMAGE = "https://placehold.co/600x400?text=Course+Image";
 
   useEffect(() => {
     if (!user) {
-        navigate('/auth');
-        return;
+      navigate('/auth');
+      return;
     }
 
     const fetchData = async () => {
-        setLoading(true);
-        try {
-            // 👇 1. FETCH DATA IN PARALLEL
-            const [myCoursesData, attemptsData] = await Promise.all([
-                getEnrolledCourses(),  // Calls your new working backend endpoint
-                getMyQuizAttempts()
-            ]);
+      setLoading(true);
+      try {
+        // 👇 1. FETCH DATA IN PARALLEL
+        const [myCoursesData, attemptsData, classesData, attendanceData] = await Promise.all([
+          getEnrolledCourses(),  // Calls your new working backend endpoint
+          getMyQuizAttempts(),
+          getClasses(),          // Live classes (for attendance)
+          getMyAttendance()      // My attendance history (to show "Marked")
+        ]);
 
-            console.log("✅ My Courses from Backend:", attemptsData);
+        console.log("✅ My Courses from Backend:", attemptsData);
 
-            setEnrolledCourses(myCoursesData);
-            setRecentAttempts(attemptsData.slice(-5).reverse());
-            
-        } catch (error) {
-            console.error("Failed to load dashboard data", error);
-        } finally {
-            setLoading(false);
-        }
+        setEnrolledCourses(myCoursesData);
+        setRecentAttempts(attemptsData.slice(-5).reverse());
+        setLiveClasses(classesData);
+        setMyAttendance(attendanceData);
+
+      } catch (error) {
+        console.error("Failed to load dashboard data", error);
+      } finally {
+        setLoading(false);
+      }
     };
 
     fetchData();
@@ -54,28 +64,65 @@ const Dashboard: React.FC = () => {
 
   if (loading) {
     return (
-        <Layout>
-            <div className="flex h-[50vh] items-center justify-center">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            </div>
-        </Layout>
+      <Layout>
+        <div className="flex h-[50vh] items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </Layout>
     );
   }
 
   const totalQuizzes = recentAttempts.length;
   const averageScore = totalQuizzes > 0
     ? recentAttempts.reduce((sum, a) => {
-        const pct = (a.totalQuestions && a.totalQuestions > 0)
-          ? ((a.score ?? 0) / a.totalQuestions) * 100
-          : (a.score ?? 0);
-        return sum + pct;
-      }, 0) / totalQuizzes
+      const pct = (a.totalQuestions && a.totalQuestions > 0)
+        ? ((a.score ?? 0) / a.totalQuestions) * 100
+        : (a.score ?? 0);
+      return sum + pct;
+    }, 0) / totalQuizzes
     : 0;
 
   const getCourseTitle = (courseId: string | number) => {
     // Robust check (String vs Number)
     const found = enrolledCourses.find((c) => String(c.id) === String(courseId));
     return found?.title || 'Unknown Course';
+  };
+
+  // ---------- Live classes / attendance helpers ----------
+  const getClassStatus = (cls: ClassInfo): 'upcoming' | 'running' | 'ended' => {
+    const now = Date.now();
+    const start = new Date(cls.start_time).getTime();
+    const end = start + cls.duration_minutes * 60 * 1000;
+    if (now < start) return 'upcoming';
+    if (now <= end) return 'running';
+    return 'ended';
+  };
+
+  const hasMarked = (classId: number) =>
+    myAttendance.some((a) => Number(a.class_id) === Number(classId));
+
+  const handleMarkAttendance = async (cls: ClassInfo) => {
+    setMarkingId(cls.id);
+    try {
+      // Location is captured automatically from the student's device GPS
+      const record = await markClassAttendance(cls.id);
+      setMyAttendance((prev) => [...prev, record]);
+      toast({
+        title: 'Attendance marked ✅',
+        description:
+          record.distance_meters != null
+            ? `You were ${Math.round(record.distance_meters)}m from the class location.`
+            : 'Attendance marked successfully.',
+      });
+    } catch (error: any) {
+      toast({
+        title: 'Attendance not recorded',
+        description: error?.message || 'Something went wrong.',
+        variant: 'destructive',
+      });
+    } finally {
+      setMarkingId(null);
+    }
   };
 
   return (
@@ -103,7 +150,7 @@ const Dashboard: React.FC = () => {
               </div>
             </CardContent>
           </Card>
-          
+
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center gap-4">
@@ -117,9 +164,121 @@ const Dashboard: React.FC = () => {
               </div>
             </CardContent>
           </Card>
-          
-          
+
+
         </div>
+
+        {/* Live Classes / Attendance */}
+        {liveClasses.length > 0 && (
+          <Card className="mb-8">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <MapPin className="h-5 w-5 text-primary" />
+                Live Classes
+              </CardTitle>
+              <CardDescription>
+                Mark attendance while you are within the allowed radius of the class location
+                (your location is captured automatically)
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {liveClasses.map((cls) => {
+                const status = getClassStatus(cls);
+                const marked = hasMarked(cls.id);
+                return (
+                  <div
+                    key={cls.id}
+                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 border rounded-lg"
+                  >
+                    <div>
+                      <p className="font-medium">{cls.name}</p>
+                      <p className="text-sm text-muted-foreground flex items-center gap-1.5">
+                        <Clock className="h-3.5 w-3.5" />
+                        {new Date(cls.start_time).toLocaleString()} · {cls.duration_minutes} min
+                      </p>
+                      <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                        <MapPin className="h-3 w-3" />
+                        Attendance within {cls.allowed_radius} m of the lecturer
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <Badge variant={status === 'running' ? 'default' : 'secondary'}>
+                        {status === 'running' ? 'Live now' : status === 'upcoming' ? 'Soon' : 'Ended'}
+                      </Badge>
+                      {marked && (
+                        <span className="flex items-center gap-1 text-sm text-emerald-600">
+                          <CheckCircle2 className="h-4 w-4" />
+                          Marked
+                        </span>
+                      )}
+                      <Button
+                        size="sm"
+                        disabled={status !== 'running' || marked || markingId !== null}
+                        onClick={() => handleMarkAttendance(cls)}
+                      >
+                        {markingId === cls.id ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Locating…
+                          </>
+                        ) : (
+                          'Mark Attendance'
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* My Attendance History */}
+        {myAttendance.length > 0 && (
+          <Card className="mb-8">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+                  My Attendance
+                </CardTitle>
+                <CardDescription>
+                  Every class you have marked attendance for
+                </CardDescription>
+              </div>
+              <Badge variant="secondary" className="px-3">
+                {myAttendance.length} marked
+              </Badge>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {myAttendance.map((record) => {
+                const cls = record.attended_class;
+                return (
+                  <div
+                    key={record.id}
+                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-4 border rounded-lg"
+                  >
+                    <div>
+                      <p className="font-medium">
+                        {cls ? cls.name : `Class #%${record.class_id}`}
+                      </p>
+                      <p className="text-sm text-muted-foreground flex items-center gap-1.5">
+                        <Clock className="h-3.5 w-3.5" />
+                        Marked {new Date(record.createdAt).toLocaleString()}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Badge variant="outline" className="flex items-center gap-1">
+                        <MapPin className="h-3 w-3" />
+                        {record.distance_meters} m from class
+                      </Badge>
+                    </div>
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
+        )}
 
         <div className="grid lg:grid-cols-2 gap-8">
           {/* Enrolled Courses */}
@@ -146,10 +305,10 @@ const Dashboard: React.FC = () => {
                 <div className="space-y-4">
                   {enrolledCourses.slice(0, 3).map((course) => {
                     const courseAttempts = recentAttempts.filter((a) => String(a.courseId ?? a.course_id) === String(course.id));
-                    const progress = courseAttempts.length > 0 
-                      ? Math.min(100, (courseAttempts.length / 3) * 100) 
+                    const progress = courseAttempts.length > 0
+                      ? Math.min(100, (courseAttempts.length / 3) * 100)
                       : 0;
-                    
+
                     return (
                       <Link
                         key={course.id}
@@ -215,7 +374,7 @@ const Dashboard: React.FC = () => {
                             ? ((attempt.score ?? 0) / attempt.totalQuestions) * 100
                             : (attempt.score ?? 0)
                           ).toFixed(0)}
-                        </p>            
+                        </p>
                       </div>
                     </div>
                   ))}

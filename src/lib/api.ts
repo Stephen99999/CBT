@@ -33,8 +33,7 @@ export const apiRequest = async <T>(endpoint: string, options: FetchOptions = {}
 
     // 6. Handle 401 (Unauthorized) specifically if you want
     if (response.status === 401) {
-      // Optional: Clear token and redirect
-      // localStorage.removeItem('token');
+       localStorage.removeItem('token');
       // window.location.href = '/auth';
     }
 

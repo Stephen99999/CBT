@@ -1,6 +1,7 @@
 // src/services/apiService.ts
 import { apiRequest } from '@/lib/api';
-import { User, Course, Question, QuizAttempt } from '@/types';
+import { getCurrentLocation } from '@/lib/geolocation';
+import { User, Course, Question, QuizAttempt, ClassInfo, AttendanceRecord } from '@/types';
 
 // ==========================================
 // COURSE FUNCTIONS
@@ -180,3 +181,80 @@ export const deleteUser = async (userId: string): Promise<boolean> => {
     return false;
   }
 };
+
+// ==========================================
+// CLASS + ATTENDANCE FUNCTIONS
+// (Location is captured automatically from the browser's GPS —
+//  the caller never passes coordinates.)
+// ==========================================
+
+export interface ClassFormData {
+  name: string;
+  start_time: string;          // ISO datetime, e.g. "2026-10-28T10:00"
+  duration_minutes?: number;   // default 60 on the backend
+  allowed_radius?: number;     // meters, default 100 on the backend
+}
+
+/** List all classes */
+export const getClasses = (): Promise<ClassInfo[]> =>
+  apiRequest<ClassInfo[]>('/classes', { method: 'GET' });
+
+/** Get one class (includes its attendance records) */
+export const getClassById = (classId: string | number): Promise<ClassInfo> =>
+  apiRequest<ClassInfo>(`/classes/${classId}`, { method: 'GET' });
+
+/**
+ * Admin creates a class. The admin's CURRENT location is auto-captured
+ * from the browser GPS and sent as latitude/longitude together with
+ * the class details. The browser shows the "allow location" prompt.
+ */
+export const createClass = async (data: ClassFormData): Promise<ClassInfo> => {
+  const location = await getCurrentLocation(); // ← auto-injected admin location
+
+  return apiRequest<ClassInfo>('/classes', {
+    method: 'POST',
+    body: JSON.stringify({
+      name: data.name,
+      start_time: data.start_time,
+      duration_minutes: data.duration_minutes,
+      allowed_radius: data.allowed_radius,
+      latitude: location.latitude,
+      longitude: location.longitude,
+    }),
+  });
+};
+
+/** Admin deletes a class */
+export const deleteClass = async (classId: string | number): Promise<boolean> => {
+  try {
+    await apiRequest(`/classes/${classId}`, { method: 'DELETE' });
+    return true;
+  } catch (error) {
+    return false;
+  }
+};
+
+/**
+ * Student marks attendance for a class. The student's CURRENT location
+ * is auto-captured from the browser GPS; the backend rejects the request
+ * if it is outside the class's allowed_radius.
+ */
+export const markClassAttendance = async (classId: string | number): Promise<AttendanceRecord> => {
+  const location = await getCurrentLocation(); // ← auto-injected student location
+
+  return apiRequest<AttendanceRecord>(`/classes/${classId}/attendance`, {
+    method: 'POST',
+    body: JSON.stringify({
+      latitude: location.latitude,
+      longitude: location.longitude,
+    }),
+  });
+};
+
+/** Student: their own attendance history */
+export const getMyAttendance = (): Promise<AttendanceRecord[]> =>
+  apiRequest<AttendanceRecord[]>('/attendance/me', { method: 'GET' });
+
+/** Admin: attendee list for one class */
+export const getClassAttendance = (classId: string | number): Promise<AttendanceRecord[]> =>
+  apiRequest<AttendanceRecord[]>(`/classes/${classId}/attendance`, { method: 'GET' });

@@ -16,12 +16,13 @@ import {
   getCoursesAdmin, createCourse, updateCourse, deleteCourse,
   getQuestionsByCourse, createQuestion, updateQuestion, deleteQuestion,
   getUsers, deleteUser, getQuizAttempts,
-  toggleCourseAvailability, toggleShowResult
+  toggleCourseAvailability, toggleShowResult,
+  getClasses, createClass, deleteClass, getClassAttendance
 } from '@/lib/storage';
-import { Course, Question, User, QuizAttempt } from '@/types';
+import { Course, Question, User, QuizAttempt, ClassInfo, AttendanceRecord } from '@/types';
 import {
   BookOpen, Users, BarChart3, Settings, PlusCircle, Pencil, Trash2,
-  AlertCircle, Loader2
+  AlertCircle, Loader2, MapPin, ClipboardList
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -62,7 +63,7 @@ const Admin: React.FC = () => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editingCourse, setEditingCourse] = useState<Course | null>(null);
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<{ type: 'course' | 'question' | 'user'; id: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ type: 'course' | 'question' | 'user' | 'class'; id: string } | null>(null);
 
   // Form states
   const [courseForm, setCourseForm] = useState({
@@ -78,6 +79,23 @@ const Admin: React.FC = () => {
     options: ['', '', '', ''],
     correctAnswer: 0,
   });
+
+  // Class states
+  const [classes, setClasses] = useState<ClassInfo[]>([]);
+  const [classDialogOpen, setClassDialogOpen] = useState(false);
+  const [creatingClass, setCreatingClass] = useState(false);
+  const [classForm, setClassForm] = useState({
+    name: '',
+    start_time: '',   // datetime-local value
+    duration: '',     // minutes (string in form, converted on save)
+    radius: '',       // meters (string in form, converted on save)
+  });
+
+  // Attendance viewer states
+  const [attendanceDialogOpen, setAttendanceDialogOpen] = useState(false);
+  const [loadingAttendance, setLoadingAttendance] = useState(false);
+  const [viewingClass, setViewingClass] = useState<ClassInfo | null>(null);
+  const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
 
   const [analyticsCourseFilter, setAnalyticsCourseFilter] = useState("all");
   const filteredAttempts = analyticsCourseFilter === "all"
@@ -124,16 +142,18 @@ const Admin: React.FC = () => {
   const loadData = useCallback(async () => {
     try {
       // Fetch all core data in parallel
-      const [coursesData, usersData, attemptsData] = await Promise.all([
+      const [coursesData, usersData, attemptsData, classesData] = await Promise.all([
         getCoursesAdmin(),
         getUsers(),
-        getQuizAttempts()
+        getQuizAttempts(),
+        getClasses()
       ]);
       console.log("Loaded Courses:", coursesData);
 
       setCourses(coursesData);
       setUsers(usersData);
       setQuizAttempts(attemptsData);
+      setClasses(classesData);
     } catch (error) {
       console.error("Failed to load admin data", error);
       toast({
@@ -283,6 +303,10 @@ const Admin: React.FC = () => {
           await deleteUser(deleteTarget.id);
           toast({ title: 'User deleted successfully' });
           break;
+        case 'class':
+          await deleteClass(deleteTarget.id);
+          toast({ title: 'Class deleted successfully' });
+          break;
       }
 
       setDeleteDialogOpen(false);
@@ -326,6 +350,52 @@ const Admin: React.FC = () => {
         description: 'Could not update course status.',
         variant: 'destructive',
       });
+    }
+  };
+
+  // Class handlers
+  const openClassDialog = () => {
+    setClassForm({ name: '', start_time: '', duration: '', radius: '' });
+    setClassDialogOpen(true);
+  };
+
+  const handleSaveClass = async () => {
+    if (!classForm.name || !classForm.start_time) {
+      toast({ title: 'Missing details', description: 'Class name and start time are required.', variant: 'destructive' });
+      return;
+    }
+    setCreatingClass(true);
+    try {
+      // createClass captures the admin's current location automatically
+      await createClass({
+        name: classForm.name,
+        start_time: classForm.start_time,
+        duration_minutes: classForm.duration ? Number(classForm.duration) : undefined,
+        allowed_radius: classForm.radius ? Number(classForm.radius) : undefined,
+      });
+      toast({ title: 'Class created successfully', description: 'Your current location was saved as the attendance zone.' });
+      setClassDialogOpen(false);
+      loadData();
+    } catch (error: any) {
+      toast({ title: 'Could not create class', description: error?.message || 'Failed to capture your location.', variant: 'destructive' });
+    } finally {
+      setCreatingClass(false);
+    }
+  };
+
+  // Attendance viewer handler
+  const openAttendanceDialog = async (cls: ClassInfo) => {
+    setViewingClass(cls);
+    setAttendanceDialogOpen(true);
+    setLoadingAttendance(true);
+    try {
+      const records = await getClassAttendance(cls.id);
+      setAttendanceRecords(records);
+    } catch (error) {
+      toast({ title: 'Failed to load attendance list', variant: 'destructive' });
+      setAttendanceRecords([]);
+    } finally {
+      setLoadingAttendance(false);
     }
   };
 
@@ -442,6 +512,7 @@ const Admin: React.FC = () => {
         <Tabs defaultValue="courses" className="space-y-6">
           <TabsList>
             <TabsTrigger value="courses">Courses</TabsTrigger>
+            <TabsTrigger value="classes">Classes</TabsTrigger>
             <TabsTrigger value="questions">Questions</TabsTrigger>
             <TabsTrigger value="users">Users</TabsTrigger>
             <TabsTrigger value="analytics">Analytics</TabsTrigger>
@@ -510,6 +581,80 @@ const Admin: React.FC = () => {
                     ))}
                   </TableBody>
                 </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Classes Tab */}
+          <TabsContent value="classes">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle>Live Classes</CardTitle>
+                  <CardDescription>
+                    Create classes — the location is captured automatically from your current position
+                  </CardDescription>
+                </div>
+                <Button onClick={() => openClassDialog()}>
+                  <PlusCircle className="mr-2 h-4 w-4" />
+                  Create Class
+                </Button>
+              </CardHeader>
+              <CardContent>
+                {classes.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    No classes yet. Create your first class!
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Starts</TableHead>
+                        <TableHead>Duration</TableHead>
+                        <TableHead>Radius</TableHead>
+                        <TableHead>Admin</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {classes.map((cls) => (
+                        <TableRow key={cls.id}>
+                          <TableCell className="font-medium">{cls.name}</TableCell>
+                          <TableCell>{new Date(cls.start_time).toLocaleString()}</TableCell>
+                          <TableCell>{cls.duration_minutes} min</TableCell>
+                          <TableCell>
+                            <span className="flex items-center gap-1">
+                              <MapPin className="h-3 w-3" />
+                              {cls.allowed_radius} m
+                            </span>
+                          </TableCell>
+                          <TableCell>{cls.admin?.name || '—'}</TableCell>
+                          <TableCell className="text-right space-x-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              title="View attendance"
+                              onClick={() => openAttendanceDialog(cls)}
+                            >
+                              <ClipboardList className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => {
+                                setDeleteTarget({ type: 'class', id: String(cls.id) });
+                                setDeleteDialogOpen(true);
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -835,6 +980,72 @@ const Admin: React.FC = () => {
         </DialogContent>
       </Dialog>
 
+      {/* Class Dialog */}
+      <Dialog open={classDialogOpen} onOpenChange={setClassDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Create Class</DialogTitle>
+            <DialogDescription>
+              Your current location will be captured automatically and saved as the
+              attendance zone when you create the class.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="class-name">Class Name</Label>
+              <Input
+                id="class-name"
+                placeholder="e.g., CHM 101 Morning Lecture"
+                value={classForm.name}
+                onChange={(e) => setClassForm((prev) => ({ ...prev, name: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="class-start">Start Time</Label>
+              <Input
+                id="class-start"
+                type="datetime-local"
+                value={classForm.start_time}
+                onChange={(e) => setClassForm((prev) => ({ ...prev, start_time: e.target.value }))}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="class-duration">Duration (minutes)</Label>
+                <Input
+                  id="class-duration"
+                  type="number"
+                  min="1"
+                  placeholder="60"
+                  value={classForm.duration}
+                  onChange={(e) => setClassForm((prev) => ({ ...prev, duration: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="class-radius">Allowed Radius (meters)</Label>
+                <Input
+                  id="class-radius"
+                  type="number"
+                  min="1"
+                  placeholder="100"
+                  value={classForm.radius}
+                  onChange={(e) => setClassForm((prev) => ({ ...prev, radius: e.target.value }))}
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setClassDialogOpen(false)} disabled={creatingClass}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveClass} disabled={creatingClass}>
+              {creatingClass && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {creatingClass ? 'Capturing location…' : 'Create (uses my location)'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Question Dialog */}
       <Dialog open={questionDialogOpen} onOpenChange={setQuestionDialogOpen}>
         <DialogContent className="max-w-lg">
@@ -892,6 +1103,60 @@ const Admin: React.FC = () => {
           <DialogFooter>
             <Button variant="outline" onClick={() => setQuestionDialogOpen(false)}>Cancel</Button>
             <Button onClick={handleSaveQuestion}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Class Attendance Viewer Dialog */}
+      <Dialog open={attendanceDialogOpen} onOpenChange={setAttendanceDialogOpen}>
+        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              Attendance — {viewingClass?.name}
+            </DialogTitle>
+            <DialogDescription>
+              Students who marked attendance for this class
+              {viewingClass && ` (fence: ${viewingClass.allowed_radius} m)`}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            {loadingAttendance ? (
+              <div className="flex justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              </div>
+            ) : attendanceRecords.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                No students have marked attendance yet.
+              </div>
+            ) : (
+              attendanceRecords.map((record) => (
+                <div
+                  key={record.id}
+                  className="flex items-center justify-between gap-3 p-3 border rounded-lg"
+                >
+                  <div>
+                    <p className="font-medium">{record.student?.name || 'Unknown Student'}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {record.student?.matric_no}
+                    </p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <Badge variant="outline" className="flex items-center gap-1 justify-center">
+                      <MapPin className="h-3 w-3" />
+                      {record.distance_meters} m
+                    </Badge>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {new Date(record.createdAt).toLocaleTimeString()}
+                    </p>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAttendanceDialogOpen(false)}>
+              Close
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

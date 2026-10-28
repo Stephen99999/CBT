@@ -27,6 +27,18 @@ module.exports = (sequelize, DataTypes) => {
         foreignKey: 'user_id',
         as: 'attempts'
       });
+
+      // 4. Classes this admin created
+      User.hasMany(models.Class, {
+        foreignKey: 'admin_id',
+        as: 'created_classes'
+      });
+
+      // 5. Attendance records this user marked
+      User.hasMany(models.Attendance, {
+        foreignKey: 'user_id',
+        as: 'attendances'
+      });
     }
   
   }

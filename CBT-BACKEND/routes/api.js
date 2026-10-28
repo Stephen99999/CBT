@@ -9,7 +9,8 @@ const authController = require('../controllers/authController');
 const courseController = require('../controllers/courseController');
 const questionController = require('../controllers/questionController');
 const quizController = require('../controllers/quizController'); 
-const userController = require('../controllers/userController'); 
+const userController = require('../controllers/userController');
+const classController = require('../controllers/classController');
 
 // ==========================================
 // AUTH ROUTES
@@ -64,6 +65,20 @@ router.put('/attempts/complete', authMiddleware, quizController.endQuiz);
 // 3. View History
 router.get('/attempts/me', authMiddleware, quizController.getMyAttempts); // Student history
 router.get('/attempts', authMiddleware, quizController.getAllAttempts);   // Admin view
+
+// ==========================================
+// CLASS + ATTENDANCE ROUTES
+// ==========================================
+// Classes
+router.get('/classes', authMiddleware, classController.index);
+router.get('/classes/:id', authMiddleware, classController.show);
+router.post('/classes', authMiddleware, classController.store);          // Admin creates (loc = admin's coords)
+router.delete('/classes/:id', authMiddleware, classController.destroy);   // Admin
+
+// Attendance
+router.post('/classes/:id/attendance', authMiddleware, classController.markAttendance); // Student marks (radius checked)
+router.get('/classes/:id/attendance', authMiddleware, classController.getAttendance);   // Admin: attendee list
+router.get('/attendance/me', authMiddleware, classController.myAttendance);              // Student history
 
 // ==========================================
 // USER ROUTES (For Admin Dashboard)

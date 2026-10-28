@@ -54,6 +54,44 @@ export interface QuizAttempt {
   };
 }
 
+// Class (live class hosted by admin) types
+export interface ClassInfo {
+  id: number;
+  admin_id: number;
+  name: string;
+  start_time: string;        // ISO datetime
+  duration_minutes: number;
+  latitude: number;
+  longitude: number;
+  allowed_radius: number;    // meters
+  createdAt?: string;
+  updatedAt?: string;
+  admin?: {
+    id: number;
+    name: string;
+    matric_no: string;
+  };
+  attendances?: AttendanceRecord[];
+}
+
+// Attendance record types
+export interface AttendanceRecord {
+  id: number;
+  class_id: number;
+  user_id: number;
+  latitude: number;
+  longitude: number;
+  distance_meters: number;
+  createdAt: string;
+  updatedAt: string;
+  attended_class?: ClassInfo;
+  student?: {
+    id: number;
+    name: string;
+    matric_no: string;
+  };
+}
+
 // Progress types
 export interface UserProgress {
   userId: string;
