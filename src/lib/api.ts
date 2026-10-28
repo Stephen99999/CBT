@@ -6,6 +6,12 @@ interface FetchOptions extends RequestInit {
   // You can add custom options here if needed later
 }
 
+/** An API failure, carrying the parsed JSON body the server responded with. */
+export interface ApiError extends Error {
+  status?: number;
+  data?: any;
+}
+
 export const apiRequest = async <T>(endpoint: string, options: FetchOptions = {}): Promise<T> => {
   // 1. Get the token
   const token = localStorage.getItem('token');
@@ -40,7 +46,13 @@ export const apiRequest = async <T>(endpoint: string, options: FetchOptions = {}
     // 7. Check if response is NOT ok (e.g., 400, 404, 500)
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.msg || errorData.message || 'API request failed');
+      // Keep the full payload on the error (e.g. your_distance_meters /
+      // allowed_radius_meters for a failed geofence check) so callers can
+      // explain exactly what went wrong instead of only a generic message.
+      const error = new Error(errorData.msg || errorData.message || 'API request failed') as ApiError;
+      error.status = response.status;
+      error.data = errorData;
+      throw error;
     }
 
     // 8. Return parsed JSON

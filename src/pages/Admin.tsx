@@ -364,6 +364,19 @@ const Admin: React.FC = () => {
       toast({ title: 'Missing details', description: 'Class name and start time are required.', variant: 'destructive' });
       return;
     }
+    // A browser GPS fix is only accurate to about 10–50 m, so a fence smaller
+    // than that rejects students standing right next to the lecturer.
+    const MIN_RADIUS_METERS = 10;
+    const radius = classForm.radius ? Number(classForm.radius) : undefined;
+    if (radius !== undefined && (!Number.isFinite(radius) || radius < MIN_RADIUS_METERS)) {
+      toast({
+        title: 'Radius too small',
+        description: `Phone GPS is only accurate to roughly 10–50 m, so anything under ${MIN_RADIUS_METERS} m would reject students standing next to you. Use at least 50 m, especially indoors.`,
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setCreatingClass(true);
     try {
       // createClass captures the admin's current location automatically
@@ -371,7 +384,7 @@ const Admin: React.FC = () => {
         name: classForm.name,
         start_time: classForm.start_time,
         duration_minutes: classForm.duration ? Number(classForm.duration) : undefined,
-        allowed_radius: classForm.radius ? Number(classForm.radius) : undefined,
+        allowed_radius: radius,
       });
       toast({ title: 'Class created successfully', description: 'Your current location was saved as the attendance zone.' });
       setClassDialogOpen(false);
@@ -1026,11 +1039,15 @@ const Admin: React.FC = () => {
                 <Input
                   id="class-radius"
                   type="number"
-                  min="1"
+                  min="10"
                   placeholder="100"
                   value={classForm.radius}
                   onChange={(e) => setClassForm((prev) => ({ ...prev, radius: e.target.value }))}
                 />
+                <p className="text-xs text-muted-foreground">
+                  GPS is only accurate to roughly 10–50 m — keep this at 50 m or more
+                  (defaults to 100 m) so students standing next to you aren't rejected.
+                </p>
               </div>
             </div>
           </div>

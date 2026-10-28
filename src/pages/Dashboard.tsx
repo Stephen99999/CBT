@@ -115,9 +115,27 @@ const Dashboard: React.FC = () => {
             : 'Attendance marked successfully.',
       });
     } catch (error: any) {
+      // The geofence rejection carries the numbers, so show them instead of
+      // the bare "too far" message — otherwise the student can't tell whether
+      // they moved or the class location itself was captured somewhere else.
+      const details = error?.data;
+      let description = error?.message || 'Something went wrong.';
+
+      if (details?.your_distance_meters != null) {
+        const allowed = details.allowed_with_accuracy_meters ?? details.allowed_radius_meters;
+        const accuracy = details.your_accuracy_meters
+          ? ` (±${details.your_accuracy_meters} m GPS accuracy)`
+          : '';
+        description = `You are about ${details.your_distance_meters} m away${accuracy}, but this class allows ${allowed} m.`;
+        if (details.your_distance_meters > 1000) {
+          description +=
+            ' That is far more than GPS error — the class location was probably captured somewhere else, so ask your lecturer to re-create it.';
+        }
+      }
+
       toast({
         title: 'Attendance not recorded',
-        description: error?.message || 'Something went wrong.',
+        description,
         variant: 'destructive',
       });
     } finally {

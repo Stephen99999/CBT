@@ -190,10 +190,26 @@ export const deleteUser = async (userId: string): Promise<boolean> => {
 
 export interface ClassFormData {
   name: string;
-  start_time: string;          // ISO datetime, e.g. "2026-10-28T10:00"
+  start_time: string;          // local datetime-local value, e.g. "2026-10-28T10:00"
   duration_minutes?: number;   // default 60 on the backend
   allowed_radius?: number;     // meters, default 100 on the backend
 }
+
+/**
+ * A `datetime-local` input yields a wall-clock string with no timezone
+ * ("2026-10-28T10:00"). `new Date(value)` reads that in the *browser's*
+ * timezone — which is the instant the admin picked — and `toISOString()`
+ * pins it to UTC. Sending the raw wall clock instead lets the server
+ * re-interpret it in its own timezone, so on a UTC host (prod) a class set
+ * for 10:00 in WAT was stored one hour late and shown as 11:00.
+ */
+export const toUtcIsoString = (value: string): string => {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error('Invalid start time. Please pick a valid date and time.');
+  }
+  return parsed.toISOString();
+};
 
 /** List all classes */
 export const getClasses = (): Promise<ClassInfo[]> =>
@@ -215,7 +231,7 @@ export const createClass = async (data: ClassFormData): Promise<ClassInfo> => {
     method: 'POST',
     body: JSON.stringify({
       name: data.name,
-      start_time: data.start_time,
+      start_time: toUtcIsoString(data.start_time), // absolute UTC instant, never a bare wall clock
       duration_minutes: data.duration_minutes,
       allowed_radius: data.allowed_radius,
       latitude: location.latitude,
@@ -238,6 +254,10 @@ export const deleteClass = async (classId: string | number): Promise<boolean> =>
  * Student marks attendance for a class. The student's CURRENT location
  * is auto-captured from the browser GPS; the backend rejects the request
  * if it is outside the class's allowed_radius.
+ *
+ * The GPS accuracy is sent too: a browser fix is typically off by 10–50 m,
+ * so a small fence (e.g. 5 m) would reject a student standing on the spot
+ * unless the backend can widen the check by the reported error.
  */
 export const markClassAttendance = async (classId: string | number): Promise<AttendanceRecord> => {
   const location = await getCurrentLocation(); // ← auto-injected student location
@@ -247,6 +267,7 @@ export const markClassAttendance = async (classId: string | number): Promise<Att
     body: JSON.stringify({
       latitude: location.latitude,
       longitude: location.longitude,
+      accuracy: location.accuracy,
     }),
   });
 };

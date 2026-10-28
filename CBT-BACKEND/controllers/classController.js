@@ -80,9 +80,26 @@ exports.store = async (req, res) => {
       return res.status(400).json({ msg: 'allowed_radius must be a positive number of meters' });
     }
 
+    // start_time must carry a timezone (an ISO instant ending in Z or ±hh:mm).
+    // A bare wall clock like "2026-10-28T10:00" gets parsed in the SERVER's
+    // timezone, which is UTC on prod but the admin's local zone in dev — that
+    // made every class show up an hour off in production.
+    if (!start_time) {
+      return res.status(400).json({ msg: 'start_time is required' });
+    }
+    if (typeof start_time === 'string' && !/(Z|[+-]\d{2}:?\d{2})$/i.test(start_time.trim())) {
+      return res.status(400).json({
+        msg: 'start_time must be an absolute datetime with a timezone offset (e.g. 2026-10-28T09:00:00.000Z)'
+      });
+    }
+    const startedAt = new Date(start_time);
+    if (Number.isNaN(startedAt.getTime())) {
+      return res.status(400).json({ msg: 'start_time is not a valid datetime' });
+    }
+
     const newClass = await Class.create({
       name,
-      start_time,
+      start_time: startedAt,
       duration_minutes,        // defaults to 60 if omitted
       latitude,
       longitude,
@@ -128,7 +145,18 @@ exports.markAttendance = async (req, res) => {
   try {
     const userId = req.user.id;
     const classId = req.params.id;
-    const { latitude, longitude } = req.body;
+    const { latitude, longitude, accuracy } = req.body;
+
+    // The browser's reported GPS accuracy in meters (radius of the error
+    // circle). A fix is rarely better than ~10 m, so without this tolerance a
+    // tiny fence (1–5 m) rejects a student standing right next to the lecturer.
+    // Capped so a bogus/very poor fix can't open the fence completely.
+    const MAX_ACCURACY_TOLERANCE_METERS = 150;
+    const reportedAccuracy = Number(accuracy);
+    const accuracyTolerance =
+      Number.isFinite(reportedAccuracy) && reportedAccuracy > 0
+        ? Math.min(reportedAccuracy, MAX_ACCURACY_TOLERANCE_METERS)
+        : 0;
 
     if (latitude === undefined || longitude === undefined) {
       return res.status(400).json({
@@ -167,11 +195,28 @@ exports.markAttendance = async (req, res) => {
       latitude, longitude
     );
 
-    if (distance > singleClass.allowed_radius) {
+    const allowance = singleClass.allowed_radius + accuracyTolerance;
+
+    if (distance > allowance) {
+      // Logged so a bad GPS fix (or a class created from a wrong location)
+      // can be spotted in the server logs instead of guessed at.
+      console.warn('❌ Geofence rejection', {
+        class_id: singleClass.id,
+        class_position: [singleClass.latitude, singleClass.longitude],
+        student_position: [latitude, longitude],
+        distance_meters: Math.round(distance),
+        allowed_radius_meters: singleClass.allowed_radius,
+        accuracy_tolerance_meters: accuracyTolerance
+      });
+
       return res.status(403).json({
         msg: 'You are too far from the class location to mark attendance.',
         your_distance_meters: Math.round(distance),
-        allowed_radius_meters: singleClass.allowed_radius
+        your_position: { latitude, longitude },
+        your_accuracy_meters: Math.round(reportedAccuracy) || null,
+        class_position: { latitude: singleClass.latitude, longitude: singleClass.longitude },
+        allowed_radius_meters: singleClass.allowed_radius,
+        allowed_with_accuracy_meters: Math.round(allowance)
       });
     }
 
@@ -194,6 +239,7 @@ exports.markAttendance = async (req, res) => {
 
     res.status(201).json({
       msg: 'Attendance marked successfully!',
+      accuracy_meters: Math.round(reportedAccuracy) || null,
       ...attendance.toJSON()
     });
   } catch (err) {
