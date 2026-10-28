@@ -28,9 +28,7 @@ const haversineMeters = (lat1, lng1, lat2, lng2) => {
 // GET /api/classes  (list all classes)
 exports.index = async (req, res) => {
   try {
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ error: 'Access denied: Admins only' });
-    }
+    
     const classes = await Class.findAll({
       include: [
         { model: User, as: 'admin', attributes: ['id', 'name', 'matric_no'] }
